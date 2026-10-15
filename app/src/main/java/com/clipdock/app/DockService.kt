@@ -24,7 +24,7 @@ class DockService: Service() {
  private val openReceiver=object:BroadcastReceiver() {
   override fun onReceive(c:Context,i:Intent) { showPanel(false) }
  }
- private val colorReceiver=object:BroadcastReceiver() { override fun onReceive(c:Context,i:Intent) { hideTab(); showTab() } }
+ private val colorReceiver=object:BroadcastReceiver() { override fun onReceive(c:Context,i:Intent) { updateTab() } }
  override fun onBind(i:Intent?):IBinder?=null
  override fun onCreate() {
   super.onCreate()
@@ -75,6 +75,15 @@ class DockService: Service() {
   }
   wm.addView(view,p); tab=view; tabParams=p
  }
+ private fun updateTab() {
+  val view=tab ?: return
+  val lp=tabParams ?: return
+  lp.width=dp(history.tabWidth())
+  lp.height=dp(history.tabHeight())
+  view.background=bg(history.color(),floatArrayOf(0f,0f,dp(18).toFloat(),dp(18).toFloat(),dp(18).toFloat(),dp(18).toFloat(),0f,0f))
+  view.alpha=history.tabOpacity()/100f
+  wm.updateViewLayout(view,lp)
+ }
  private fun hideTab() { tab?.let { wm.removeView(it) }; tab=null }
  private fun capture() {
   try {
@@ -89,9 +98,9 @@ class DockService: Service() {
   // Do not read the clipboard just because the user opens the tab.
   // Only actual clipboard change callbacks may create history entries.
   val screenWidth=resources.displayMetrics.widthPixels
-  val width=(screenWidth*0.88f).toInt()
+  val width=(screenWidth*0.96f).toInt()
   val outer=LinearLayout(this).apply {
-   orientation=LinearLayout.VERTICAL; setPadding(dp(16),dp(20),dp(16),dp(16))
+   orientation=LinearLayout.VERTICAL; setPadding(dp(14),dp(14),dp(14),dp(12))
    background=bg(0xFF151C2A.toInt(),floatArrayOf(0f,0f,dp(24).toFloat(),dp(24).toFloat(),dp(24).toFloat(),dp(24).toFloat(),0f,0f))
    elevation=dp(14).toFloat()
   }
@@ -101,6 +110,57 @@ class DockService: Service() {
   val close=TextView(this).apply { text="✕"; textSize=23f; gravity=Gravity.CENTER; setTextColor(0xFFB9C2D5.toInt()); setOnClickListener { hidePanel() } }
   header.addView(close,LinearLayout.LayoutParams(dp(44),dp(44)))
   outer.addView(header)
+  val settingsToggle=TextView(this).apply {
+   text="⚙  Çentik ayarları  ▾"
+   textSize=14f; setTextColor(0xFFBCA8FF.toInt())
+   setPadding(dp(10),dp(9),dp(10),dp(9))
+  }
+  outer.addView(settingsToggle)
+  val settings=LinearLayout(this).apply {
+   orientation=LinearLayout.VERTICAL
+   visibility=View.GONE
+   setPadding(dp(10),dp(8),dp(10),dp(10))
+   background=bg(0xFF242E40.toInt(),FloatArray(8){dp(12).toFloat()})
+  }
+  settingsToggle.setOnClickListener {
+   settings.visibility=if(settings.visibility==View.VISIBLE) View.GONE else View.VISIBLE
+   settingsToggle.text=if(settings.visibility==View.VISIBLE) "⚙  Çentik ayarları  ▴" else "⚙  Çentik ayarları  ▾"
+  }
+  val colors=intArrayOf(0xFF8358F5.toInt(),0xFF559EFF.toInt(),0xFF31CC93.toInt(),0xFFFF873A.toInt(),0xFFF75D87.toInt(),0xFF66758C.toInt())
+  settings.addView(itemText("Çentik rengi",13f))
+  val palette=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
+  colors.forEach { color ->
+   val swatch=TextView(this).apply {
+    text="●"; textSize=26f; gravity=Gravity.CENTER; setTextColor(color)
+    setOnClickListener { history.setColor(color); updateTab() }
+   }
+   palette.addView(swatch,LinearLayout.LayoutParams(0,dp(38),1f))
+  }
+  settings.addView(palette)
+  fun slider(label:String,min:Int,max:Int,current:Int,onValue:(Int)->Unit) {
+   val caption=itemText("$label: $current",12f)
+   settings.addView(caption)
+   val seek=SeekBar(this).apply {
+    this.max=max-min
+    progress=current-min
+    progressTintList=android.content.res.ColorStateList.valueOf(0xFFA68CFF.toInt())
+    thumbTintList=android.content.res.ColorStateList.valueOf(0xFFA68CFF.toInt())
+    setOnSeekBarChangeListener(object:SeekBar.OnSeekBarChangeListener {
+     override fun onProgressChanged(bar:SeekBar?,value:Int,fromUser:Boolean) {
+      val v=value+min
+      caption.text="$label: $v"
+      if(fromUser) { onValue(v); updateTab() }
+     }
+     override fun onStartTrackingTouch(bar:SeekBar?) {}
+     override fun onStopTrackingTouch(bar:SeekBar?) {}
+    })
+   }
+   settings.addView(seek)
+  }
+  slider("Genişlik (dp)",8,65,history.tabWidth(),history::setTabWidth)
+  slider("Yükseklik (dp)",20,160,history.tabHeight(),history::setTabHeight)
+  slider("Görünürlük (%)",20,100,history.tabOpacity(),history::setTabOpacity)
+  outer.addView(settings)
   val sub=TextView(this).apply { text="SON KOPYALANANLAR  •  ${history.all().size}/10"; textSize=12f; setTextColor(0xFF9BAAC3.toInt()); setPadding(0,dp(4),0,dp(12)) }
   outer.addView(sub)
   val scroll=ScrollView(this)
@@ -111,7 +171,7 @@ class DockService: Service() {
   scroll.addView(list); outer.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
   val footer=itemText("Temizle",14f).apply { gravity=Gravity.END; setTextColor(0xFFFF879B.toInt()); setOnClickListener { history.clear(); refreshList() } }
   outer.addView(footer)
-  val p=params(width,(resources.displayMetrics.heightPixels*0.74f).toInt()).apply { y=(resources.displayMetrics.heightPixels*0.13f).toInt() }
+  val p=params(width,(resources.displayMetrics.heightPixels*0.88f).toInt()).apply { y=(resources.displayMetrics.heightPixels*0.055f).toInt() }
   wm.addView(outer,p); panel=outer
  }
  private fun itemText(value:String,size:Float)=TextView(this).apply { text=value; textSize=size; setTextColor(Color.WHITE); setPadding(dp(8),dp(10),dp(8),dp(10)) }
@@ -146,17 +206,17 @@ class DockService: Service() {
    }
    row.addView(preview,LinearLayout.LayoutParams(0,dp(52),1f))
    val copyButton=TextView(this).apply {
-    text="⧉"; textSize=25f; gravity=Gravity.CENTER
+    text="⧉"; textSize=17f; gravity=Gravity.CENTER
     setTextColor(0xFFA68CFF.toInt())
     setOnClickListener { copy(value) }
    }
-   row.addView(copyButton,LinearLayout.LayoutParams(dp(42),dp(50)))
+   row.addView(copyButton,LinearLayout.LayoutParams(dp(30),dp(42)))
    val deleteButton=TextView(this).apply {
     text="×"; textSize=25f; gravity=Gravity.CENTER
     setTextColor(0xFFFF879B.toInt())
     setOnClickListener { history.remove(value); refreshList() }
    }
-   row.addView(deleteButton,LinearLayout.LayoutParams(dp(30),dp(50)))
+   row.addView(deleteButton,LinearLayout.LayoutParams(dp(28),dp(42)))
    list.addView(row,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(8) })
   }
  }
