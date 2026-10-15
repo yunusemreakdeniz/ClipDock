@@ -46,15 +46,16 @@ class DockService: Service() {
   val view=TextView(this).apply {
    text="▤"; textSize=22f; gravity=Gravity.CENTER; setTextColor(Color.WHITE)
    background=bg(history.color(),floatArrayOf(0f,0f,dp(18).toFloat(),dp(18).toFloat(),dp(18).toFloat(),dp(18).toFloat(),0f,0f))
+   alpha=history.tabOpacity()/100f
   }
-  val p=params(dp(33),dp(86))
+  val p=params(dp(history.tabWidth()),dp(history.tabHeight()))
   var startY=0f; var originalY=0; var moved=false
   view.setOnTouchListener { _,event ->
    when(event.action) {
     MotionEvent.ACTION_DOWN -> { startY=event.rawY; originalY=p.y; moved=false; true }
     MotionEvent.ACTION_MOVE -> {
      if(kotlin.math.abs(event.rawY-startY)>dp(8)) moved=true
-     if(moved) { p.y=(originalY+(event.rawY-startY)).toInt().coerceIn(0,resources.displayMetrics.heightPixels-dp(100)); wm.updateViewLayout(view,p) }
+     if(moved) { p.y=(originalY+(event.rawY-startY)).toInt().coerceIn(0,resources.displayMetrics.heightPixels-dp(history.tabHeight()+14)); wm.updateViewLayout(view,p) }
      true
     }
     MotionEvent.ACTION_UP -> { if(!moved) showPanel(); true }

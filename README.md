@@ -15,3 +15,4 @@ Bu proje ClipboardManager dinleyicisini kullanır; ancak başka uygulamalardan y
 kopyalamaları yakalayamaz. Ekran üstü izni ve foreground service bu kısıtlamayı aşmaz.
 Uygulama, çentik açılırken panoyu okumayı da dener. İşletim sistemi erişimi reddedebilir.
 Klavye değişmeden eksiksiz otomatik geçmiş için standart Android API'si yoktur.
+\n## v1.1\nYeni uygulama ikonu, çentik yüksekliği (48–160 dp), genişliği (22–65 dp), saydamlığı (%20–100) ve canlı renk ayarı eklendi. Ayarlar kalıcıdır.\n\n## v1.2 Android 15 deneme\nErişilebilirlik servisi eklendi: yalnızca Kopyala eylemine benzeyen olayları algılar ve Android izin verirse panodaki metni kaydeder. Erişilebilirlik izni otomatik verilmez; Ayarlar > Erişilebilirlik > ClipDock üzerinden kullanıcı açar. Android 15'te bu servis dahi tüm panoya erişemez. Shizuku entegrasyonu **yoktur**: Shizuku tek başına bu sistem kısıtlamasını güvenilir biçimde çözmez. Erişilebilirlik hizmeti ekran metinlerini okumaz.\n

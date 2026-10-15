@@ -20,4 +20,10 @@ class History(private val context: Context) {
  fun clear() = prefs.edit().remove("history").apply()
  fun color() = prefs.getInt("color",0xFF8358F5.toInt())
  fun setColor(c:Int) = prefs.edit().putInt("color",c).apply()
+ fun tabHeight() = prefs.getInt("tab_height",86)
+ fun setTabHeight(v:Int) = prefs.edit().putInt("tab_height",v).apply()
+ fun tabWidth() = prefs.getInt("tab_width",33)
+ fun setTabWidth(v:Int) = prefs.edit().putInt("tab_width",v).apply()
+ fun tabOpacity() = prefs.getInt("tab_opacity",90)
+ fun setTabOpacity(v:Int) = prefs.edit().putInt("tab_opacity",v).apply()
 }

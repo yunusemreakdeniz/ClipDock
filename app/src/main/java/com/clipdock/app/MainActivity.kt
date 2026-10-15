@@ -40,6 +40,40 @@ class MainActivity: Activity() {
    text="●"; textSize=20f; setTextColor(color); setOnClickListener { h.setColor(color); sendBroadcast(Intent("com.clipdock.app.COLOR").setPackage(packageName)) }
   },LinearLayout.LayoutParams(0,58,1f)) }
   root.addView(palette)
+  root.addView(label("Çentik boyutu",19f))
+  fun settingSlider(title:String, current:Int, min:Int, max:Int, suffix:String, save:(Int)->Unit) {
+   val text=label("$title: $current$suffix",15f)
+   root.addView(text)
+   val slider=SeekBar(this).apply {
+    this.max=max-min
+    progress=current-min
+    progressTintList=android.content.res.ColorStateList.valueOf(h.color())
+    thumbTintList=android.content.res.ColorStateList.valueOf(h.color())
+    setOnSeekBarChangeListener(object:SeekBar.OnSeekBarChangeListener {
+     override fun onProgressChanged(bar:SeekBar?, value:Int, fromUser:Boolean) {
+      val newValue=value+min
+      text.text="$title: $newValue$suffix"
+      if(fromUser) {
+       save(newValue)
+       sendBroadcast(Intent("com.clipdock.app.COLOR").setPackage(packageName))
+      }
+     }
+     override fun onStartTrackingTouch(bar:SeekBar?) {}
+     override fun onStopTrackingTouch(bar:SeekBar?) {}
+    })
+   }
+   root.addView(slider)
+  }
+  settingSlider("Yükseklik",h.tabHeight(),48,160," dp",h::setTabHeight)
+  settingSlider("Genişlik",h.tabWidth(),22,65," dp",h::setTabWidth)
+  root.addView(label("Çentik saydamlığı",19f))
+  settingSlider("Görünürlük",h.tabOpacity(),20,100,"%",h::setTabOpacity)
+  root.addView(label("Kopyalama algılama (deneysel)",19f))
+  root.addView(label("Android 15, erişilebilirlik servisine de panoyu okuma izni garanti etmez. Bu özellik yalnızca bazı uygulamalardaki Kopyala eylemlerini algılamayı dener.",13f))
+  root.addView(Button(this).apply {
+   text="Erişilebilirlik ayarlarını aç"
+   setOnClickListener { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+  })
   val clear=Button(this).apply { text="Geçmişi temizle"; setOnClickListener { h.clear(); Toast.makeText(this@MainActivity,"Geçmiş temizlendi",Toast.LENGTH_SHORT).show() } }
   root.addView(clear)
   val stop=Button(this).apply { text="Çentiği kapat"; setOnClickListener { stopService(Intent(this@MainActivity,DockService::class.java)) } }
