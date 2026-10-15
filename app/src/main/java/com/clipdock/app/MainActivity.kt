@@ -64,8 +64,8 @@ class MainActivity: Activity() {
    }
    root.addView(slider)
   }
-  settingSlider("Yükseklik",h.tabHeight(),48,160," dp",h::setTabHeight)
-  settingSlider("Genişlik",h.tabWidth(),22,65," dp",h::setTabWidth)
+  settingSlider("Yükseklik",h.tabHeight(),20,160," dp",h::setTabHeight)
+  settingSlider("Genişlik",h.tabWidth(),8,65," dp",h::setTabWidth)
   root.addView(label("Çentik saydamlığı",19f))
   settingSlider("Görünürlük",h.tabOpacity(),20,100,"%",h::setTabOpacity)
   root.addView(label("Kopyalama algılama (deneysel)",19f))

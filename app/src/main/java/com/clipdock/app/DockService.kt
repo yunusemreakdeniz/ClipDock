@@ -15,9 +15,15 @@ class DockService: Service() {
  private lateinit var clipboard:ClipboardManager
  private var tab:View?=null
  private var panel:View?=null
+ private var panelList:LinearLayout?=null
+ private var panelCounter:TextView?=null
+ private var ignoreOwnCopy=false
  private val handler=Handler(Looper.getMainLooper())
  private var tabParams:WindowManager.LayoutParams?=null
- private val listener=ClipboardManager.OnPrimaryClipChangedListener { handler.post { capture() } }
+ private val listener=ClipboardManager.OnPrimaryClipChangedListener { handler.post { if(!ignoreOwnCopy) capture() } }
+ private val openReceiver=object:BroadcastReceiver() {
+  override fun onReceive(c:Context,i:Intent) { showPanel(false) }
+ }
  private val colorReceiver=object:BroadcastReceiver() { override fun onReceive(c:Context,i:Intent) { hideTab(); showTab() } }
  override fun onBind(i:Intent?):IBinder?=null
  override fun onCreate() {
@@ -32,6 +38,7 @@ class DockService: Service() {
   startForeground(11,notification)
   clipboard.addPrimaryClipChangedListener(listener)
   registerReceiver(colorReceiver,IntentFilter("com.clipdock.app.COLOR"),Context.RECEIVER_NOT_EXPORTED)
+  registerReceiver(openReceiver,IntentFilter("com.clipdock.app.OPEN_PANEL"),Context.RECEIVER_NOT_EXPORTED)
   showTab()
  }
  private fun bg(color:Int,radii:FloatArray):GradientDrawable =
@@ -44,7 +51,7 @@ class DockService: Service() {
  private fun showTab() {
   if(tab!=null) return
   val view=TextView(this).apply {
-   text="▤"; textSize=22f; gravity=Gravity.CENTER; setTextColor(Color.WHITE)
+   text=""; gravity=Gravity.CENTER
    background=bg(history.color(),floatArrayOf(0f,0f,dp(18).toFloat(),dp(18).toFloat(),dp(18).toFloat(),dp(18).toFloat(),0f,0f))
    alpha=history.tabOpacity()/100f
   }
@@ -58,7 +65,11 @@ class DockService: Service() {
      if(moved) { p.y=(originalY+(event.rawY-startY)).toInt().coerceIn(0,resources.displayMetrics.heightPixels-dp(history.tabHeight()+14)); wm.updateViewLayout(view,p) }
      true
     }
-    MotionEvent.ACTION_UP -> { if(!moved) showPanel(); true }
+    MotionEvent.ACTION_UP -> { if(!moved) {
+      val intent=Intent(this@DockService,ClipboardCaptureActivity::class.java)
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION)
+      try { startActivity(intent) } catch (_:Exception) { showPanel(false) }
+     }; true }
     else -> false
    }
   }
@@ -70,12 +81,13 @@ class DockService: Service() {
    val item=clipboard.primaryClip?.takeIf { it.itemCount>0 }?.getItemAt(0) ?: return
    val value=item.coerceToText(this)?.toString() ?: return
    history.add(value)
-   if(panel!=null) { hidePanel(); showPanel(false) }
+   if(panel!=null) refreshList()
   } catch (_:Exception) { /* OS may deny clipboard access in background */ }
  }
  private fun showPanel(readClipboard:Boolean=true) {
   if(panel!=null) return
-  if(readClipboard) capture()
+  // Do not read the clipboard just because the user opens the tab.
+  // Only actual clipboard change callbacks may create history entries.
   val screenWidth=resources.displayMetrics.widthPixels
   val width=(screenWidth*0.88f).toInt()
   val outer=LinearLayout(this).apply {
@@ -93,33 +105,69 @@ class DockService: Service() {
   outer.addView(sub)
   val scroll=ScrollView(this)
   val list=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
-  val entries=history.all()
-  if(entries.isEmpty()) list.addView(itemText("Henüz kayıt yok. Android izin verdiğinde kopyalanan metinler burada görünür.",14f))
-  entries.forEachIndexed { index,value ->
-   val row=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL; setPadding(dp(12),dp(8),dp(8),dp(8)); background=bg(0xFF242E40.toInt(),FloatArray(8){dp(12).toFloat()}) }
-   val preview=TextView(this).apply { text=value; textSize=14f; setTextColor(Color.WHITE); maxLines=2; ellipsize=android.text.TextUtils.TruncateAt.END; setOnClickListener { copy(value) } }
-   row.addView(preview,LinearLayout.LayoutParams(0,dp(52),1f))
-   val copy=TextView(this).apply { text="⧉"; textSize=25f; gravity=Gravity.CENTER; setTextColor(0xFFA68CFF.toInt()); setOnClickListener { copy(value) } }
-   row.addView(copy,LinearLayout.LayoutParams(dp(42),dp(50)))
-   val delete=TextView(this).apply { text="×"; textSize=25f; gravity=Gravity.CENTER; setTextColor(0xFFFF879B.toInt()); setOnClickListener { history.remove(value); hidePanel(); showPanel(false) } }
-   row.addView(delete,LinearLayout.LayoutParams(dp(30),dp(50)))
-   list.addView(row,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(8) })
-  }
+  panelList=list
+  panelCounter=sub
+  refreshList()
   scroll.addView(list); outer.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
-  val footer=itemText("Temizle",14f).apply { gravity=Gravity.END; setTextColor(0xFFFF879B.toInt()); setOnClickListener { history.clear(); hidePanel(); showPanel(false) } }
+  val footer=itemText("Temizle",14f).apply { gravity=Gravity.END; setTextColor(0xFFFF879B.toInt()); setOnClickListener { history.clear(); refreshList() } }
   outer.addView(footer)
   val p=params(width,(resources.displayMetrics.heightPixels*0.74f).toInt()).apply { y=(resources.displayMetrics.heightPixels*0.13f).toInt() }
   wm.addView(outer,p); panel=outer
  }
  private fun itemText(value:String,size:Float)=TextView(this).apply { text=value; textSize=size; setTextColor(Color.WHITE); setPadding(dp(8),dp(10),dp(8),dp(10)) }
  private fun copy(value:String) {
-  clipboard.setPrimaryClip(ClipData.newPlainText("ClipDock",value))
-  history.add(value); hidePanel()
-  Toast.makeText(this,"Panoya kopyalandı",Toast.LENGTH_SHORT).show()
+  ignoreOwnCopy=true
+  try {
+   clipboard.setPrimaryClip(ClipData.newPlainText("ClipDock",value))
+   history.add(value)
+   refreshList()
+   Toast.makeText(this,"Panoya kopyalandı",Toast.LENGTH_SHORT).show()
+  } finally {
+   handler.postDelayed({ ignoreOwnCopy=false },400)
+  }
  }
- private fun hidePanel() { panel?.let { wm.removeView(it) }; panel=null }
+ private fun refreshList() {
+  val list=panelList ?: return
+  list.removeAllViews()
+  val entries=history.all()
+  panelCounter?.text="SON KOPYALANANLAR  •  ${entries.size}/10"
+  if(entries.isEmpty()) list.addView(itemText("Henüz kayıt yok. Android izin verdiğinde kopyalanan metinler burada görünür.",14f))
+  entries.forEach { value ->
+   val row=LinearLayout(this).apply {
+    orientation=LinearLayout.HORIZONTAL
+    gravity=Gravity.CENTER_VERTICAL
+    setPadding(dp(12),dp(8),dp(8),dp(8))
+    background=bg(0xFF242E40.toInt(),FloatArray(8){dp(12).toFloat()})
+   }
+   val preview=TextView(this).apply {
+    text=value; textSize=14f; setTextColor(Color.WHITE)
+    maxLines=2; ellipsize=android.text.TextUtils.TruncateAt.END
+    setOnClickListener { copy(value) }
+   }
+   row.addView(preview,LinearLayout.LayoutParams(0,dp(52),1f))
+   val copyButton=TextView(this).apply {
+    text="⧉"; textSize=25f; gravity=Gravity.CENTER
+    setTextColor(0xFFA68CFF.toInt())
+    setOnClickListener { copy(value) }
+   }
+   row.addView(copyButton,LinearLayout.LayoutParams(dp(42),dp(50)))
+   val deleteButton=TextView(this).apply {
+    text="×"; textSize=25f; gravity=Gravity.CENTER
+    setTextColor(0xFFFF879B.toInt())
+    setOnClickListener { history.remove(value); refreshList() }
+   }
+   row.addView(deleteButton,LinearLayout.LayoutParams(dp(30),dp(50)))
+   list.addView(row,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(8) })
+  }
+ }
+ private fun hidePanel() {
+  panel?.let { wm.removeView(it) }
+  panel=null
+  panelList=null
+  panelCounter=null
+ }
  override fun onDestroy() {
-  clipboard.removePrimaryClipChangedListener(listener); unregisterReceiver(colorReceiver)
+  clipboard.removePrimaryClipChangedListener(listener); unregisterReceiver(colorReceiver); unregisterReceiver(openReceiver)
   hidePanel(); hideTab(); super.onDestroy()
  }
 }
