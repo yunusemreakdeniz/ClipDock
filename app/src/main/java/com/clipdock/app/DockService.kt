@@ -6,6 +6,8 @@ import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
 import android.os.*
+import android.net.Uri
+import android.util.Patterns
 import android.view.*
 import android.widget.*
 
@@ -18,6 +20,7 @@ class DockService: Service() {
  private var panelList:LinearLayout?=null
  private var panelCounter:TextView?=null
  private var ignoreOwnCopy=false
+ private val revealedClips=mutableSetOf<String>()
  private val handler=Handler(Looper.getMainLooper())
  private var tabParams:WindowManager.LayoutParams?=null
  private val listener=ClipboardManager.OnPrimaryClipChangedListener { handler.post { if(!ignoreOwnCopy) capture() } }
@@ -163,7 +166,60 @@ class DockService: Service() {
   outer.addView(settings)
   val sub=TextView(this).apply { text="KAYITLAR  •  ${history.all().size} (sabitlenenler korunur)"; textSize=12f; setTextColor(0xFF9BAAC3.toInt()); setPadding(0,dp(4),0,dp(12)) }
   outer.addView(sub)
-  val scroll=ScrollView(this)
+  // Horizontal right swipe deletes unpinned entries; vertical gestures scroll normally.
+  // A pinned entry is never deleted by a gesture.
+  val scroll=object:ScrollView(this) {
+   private var downX=0f
+   private var downY=0f
+   private var target:String?=null
+   private var horizontal=false
+   override fun onInterceptTouchEvent(event:MotionEvent):Boolean {
+    when(event.actionMasked) {
+     MotionEvent.ACTION_DOWN -> {
+      downX=event.x; downY=event.y; horizontal=false
+      val listView=panelList
+      val contentY=(event.y+scrollY).toInt()
+      target=null
+      if(listView!=null) {
+       val i=(0 until listView.childCount).firstOrNull { n ->
+        val child=listView.getChildAt(n)
+        contentY>=child.top && contentY<child.bottom
+       }
+       target=i?.let { history.entries().getOrNull(it) }?.takeUnless { it.pinned || it.hidden }?.text
+      }
+     }
+     MotionEvent.ACTION_MOVE -> {
+      val dx=event.x-downX
+      val dy=event.y-downY
+      if(target!=null && dx>dp(20) && dx>kotlin.math.abs(dy)*1.5f) {
+       horizontal=true
+       return true
+      }
+     }
+    }
+    return super.onInterceptTouchEvent(event)
+   }
+   override fun onTouchEvent(event:MotionEvent):Boolean {
+    if(horizontal) {
+     if(event.actionMasked==MotionEvent.ACTION_UP) {
+      val dx=event.x-downX
+      val dy=event.y-downY
+      val value=target
+      if(value!=null && dx>dp(100) && dx>kotlin.math.abs(dy)*1.5f &&
+       history.entries().any { it.text==value && !it.pinned && !it.hidden }) {
+       history.remove(value)
+       refreshList()
+       Toast.makeText(this@DockService,"Kayıt silindi",Toast.LENGTH_SHORT).show()
+      }
+      horizontal=false; target=null
+     } else if(event.actionMasked==MotionEvent.ACTION_CANCEL) {
+      horizontal=false; target=null
+     }
+     return true
+    }
+    return super.onTouchEvent(event)
+   }
+  }
   val list=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
   panelList=list
   panelCounter=sub
@@ -171,30 +227,8 @@ class DockService: Service() {
   scroll.addView(list); outer.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
   val footer=itemText("Temizle",14f).apply { gravity=Gravity.END; setTextColor(0xFFFF879B.toInt()); setOnClickListener { history.clear(); refreshList() } }
   outer.addView(footer)
-  // A left swipe closes the drawer, including when the gesture starts on a list item.
-  // Ordinary taps and vertical scrolling continue to work.
-  val backdrop=object:FrameLayout(this) {
-   private var downX=0f
-   private var downY=0f
-   private var swipeDismissed=false
-   override fun dispatchTouchEvent(event:MotionEvent):Boolean {
-    when(event.actionMasked) {
-     MotionEvent.ACTION_DOWN -> {
-      downX=event.x; downY=event.y; swipeDismissed=false
-     }
-     MotionEvent.ACTION_UP -> {
-      val dx=event.x-downX
-      val dy=event.y-downY
-      if(dx < -dp(75) && kotlin.math.abs(dx)>kotlin.math.abs(dy)*1.3f) {
-       swipeDismissed=true
-       hidePanel()
-       return true
-      }
-     }
-    }
-    return super.dispatchTouchEvent(event)
-   }
-  }.apply {
+  // Tapping outside closes the drawer; gestures inside the list are reserved for items.
+  val backdrop=FrameLayout(this).apply {
    setBackgroundColor(0x55000000)
    setOnClickListener { hidePanel() }
   }
@@ -239,6 +273,28 @@ class DockService: Service() {
   dialog.show()
   dialog.window?.setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
  }
+ private fun smartAction(value:String):Pair<String,Intent>? {
+  val trimmed=value.trim()
+  if(Patterns.WEB_URL.matcher(trimmed).matches() &&
+   (trimmed.startsWith("https://",true) || trimmed.startsWith("http://",true) || trimmed.startsWith("www.",true))) {
+   val url=if(trimmed.startsWith("www.",true)) "https://$trimmed" else trimmed
+   return "Bağlantıyı aç" to Intent(Intent.ACTION_VIEW,Uri.parse(url))
+  }
+  val digits=trimmed.replace(Regex("[\\s()+-]"),"")
+  if(digits.length in 10..15 && digits.all { it.isDigit() }) {
+   return "Numarayı ara" to Intent(Intent.ACTION_DIAL,Uri.parse("tel:$digits"))
+  }
+  return null
+ }
+ private fun normalizedIban(value:String):String? {
+  val iban=value.uppercase(java.util.Locale.ROOT).replace(Regex("\\s"),"")
+  return if(iban.matches(Regex("[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}")) &&
+   (iban.take(2)!="TR" || iban.length==26)) iban else null
+ }
+ private fun launchSafe(intent:Intent) {
+  try { intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); startActivity(intent) }
+  catch (_:Exception) { Toast.makeText(this,"Bu işlem için uygun uygulama bulunamadı",Toast.LENGTH_SHORT).show() }
+ }
  private fun refreshList() {
   val list=panelList ?: return
   list.removeAllViews()
@@ -248,6 +304,7 @@ class DockService: Service() {
   if(entries.isEmpty()) list.addView(itemText("Henüz kayıt yok.",14f))
   entries.forEach { entry ->
    val value=entry.text
+   val concealed=entry.hidden && !revealedClips.contains(value)
    val row=LinearLayout(this).apply {
     orientation=LinearLayout.VERTICAL
     setPadding(dp(10),dp(8),dp(8),dp(8))
@@ -258,14 +315,51 @@ class DockService: Service() {
     gravity=Gravity.CENTER_VERTICAL
    }
    val preview=TextView(this).apply {
-    text=value
+    text=if(concealed) "••••••••  Gizli kayıt" else value
     textSize=14f
     setTextColor(Color.WHITE)
     maxLines=2
     ellipsize=android.text.TextUtils.TruncateAt.END
-    setOnClickListener { copy(value) }
+    setOnClickListener {
+     if(concealed) Toast.makeText(this@DockService,"Önce göz simgesiyle göster",Toast.LENGTH_SHORT).show()
+     else copy(value)
+    }
    }
    top.addView(preview,LinearLayout.LayoutParams(0,dp(52),1f))
+   if(!concealed) smartAction(value)?.let { (label,intent) ->
+    val action=TextView(this).apply {
+     text=if(label=="Bağlantıyı aç") "↗" else "☎"
+     textSize=19f
+     gravity=Gravity.CENTER
+     setTextColor(0xFF77DCC1.toInt())
+     contentDescription=label
+     setOnClickListener { launchSafe(intent) }
+    }
+    top.addView(action,LinearLayout.LayoutParams(dp(28),dp(42)))
+   }
+   if(!concealed) normalizedIban(value)?.let { iban ->
+    val action=TextView(this).apply {
+     text="₺"; textSize=17f; gravity=Gravity.CENTER
+     setTextColor(0xFF77DCC1.toInt())
+     contentDescription="IBAN boşluksuz kopyala"
+     setOnClickListener { copy(iban) }
+    }
+    top.addView(action,LinearLayout.LayoutParams(dp(28),dp(42)))
+   }
+   if(entry.hidden) {
+    val eye=TextView(this).apply {
+     text=if(concealed) "◉" else "◌"
+     textSize=21f
+     gravity=Gravity.CENTER
+     setTextColor(0xFF77DCC1.toInt())
+     contentDescription=if(concealed) "Gizli kaydı göster" else "Gizli kaydı gizle"
+     setOnClickListener {
+      if(concealed) revealedClips.add(value) else revealedClips.remove(value)
+      refreshList()
+     }
+    }
+    top.addView(eye,LinearLayout.LayoutParams(dp(30),dp(42)))
+   }
    val pinButton=TextView(this).apply {
     text=if(entry.pinned) "★" else "☆"
     textSize=22f
@@ -278,17 +372,36 @@ class DockService: Service() {
    val copyButton=TextView(this).apply {
     text="⧉"; textSize=18f; gravity=Gravity.CENTER
     setTextColor(0xFFA68CFF.toInt())
-    setOnClickListener { copy(value) }
+    setOnClickListener {
+     if(concealed) Toast.makeText(this@DockService,"Önce göz simgesiyle göster",Toast.LENGTH_SHORT).show()
+     else copy(value)
+    }
    }
    top.addView(copyButton,LinearLayout.LayoutParams(dp(30),dp(42)))
-   if(entry.pinned) {
-    // Pinned clips hide destructive actions in an overflow menu.
+   if(entry.pinned || entry.hidden) {
+    // Pinned and hidden clips hide destructive actions in an overflow menu.
     val moreButton=TextView(this).apply {
      text="⋮"; textSize=24f; gravity=Gravity.CENTER
      setTextColor(0xFFB9C2D5.toInt())
      contentDescription="Diğer seçenekler"
      setOnClickListener { anchor ->
       PopupMenu(this@DockService,anchor).apply {
+       menu.add(if(entry.hidden) "Gizlilikten çıkar" else "Gizli kayıt yap").setOnMenuItemClickListener {
+        history.setHidden(value,!entry.hidden)
+        revealedClips.remove(value)
+        refreshList()
+        true
+       }
+       if(entry.pinned) {
+        menu.add("Yukarı taşı").setOnMenuItemClickListener { history.movePinned(value,-1); refreshList(); true }
+        menu.add("Aşağı taşı").setOnMenuItemClickListener { history.movePinned(value,1); refreshList(); true }
+       }
+       if(!concealed) smartAction(value)?.let { (label,intent) ->
+        menu.add(label).setOnMenuItemClickListener { launchSafe(intent); true }
+       }
+       if(!concealed) normalizedIban(value)?.let { iban ->
+        menu.add("IBAN (boşluksuz) kopyala").setOnMenuItemClickListener { copy(iban); true }
+       }
        menu.add("Sil").setOnMenuItemClickListener {
         history.remove(value)
         refreshList()
@@ -300,6 +413,13 @@ class DockService: Service() {
     }
     top.addView(moreButton,LinearLayout.LayoutParams(dp(28),dp(42)))
    } else {
+    val hideButton=TextView(this).apply {
+     text="◉"; textSize=19f; gravity=Gravity.CENTER
+     setTextColor(0xFFB9C2D5.toInt())
+     contentDescription="Gizli kayıt yap"
+     setOnClickListener { history.setHidden(value,true); revealedClips.remove(value); refreshList() }
+    }
+    top.addView(hideButton,LinearLayout.LayoutParams(dp(28),dp(42)))
     val deleteButton=TextView(this).apply {
      text="×"; textSize=24f; gravity=Gravity.CENTER
      setTextColor(0xFFFF879B.toInt())
@@ -310,13 +430,16 @@ class DockService: Service() {
    }
    row.addView(top)
    val noteButton=TextView(this).apply {
-    text=if(entry.note.isBlank()) "✎  Açıklama ekle" else "✎  ${entry.note}"
+    text=if(concealed) "Açıklama gizlendi" else if(entry.note.isBlank()) "✎  Açıklama ekle" else "✎  ${entry.note}"
     textSize=12f
     maxLines=2
     ellipsize=android.text.TextUtils.TruncateAt.END
     setTextColor(0xFFBCA8FF.toInt())
     setPadding(dp(4),dp(3),dp(4),dp(4))
-    setOnClickListener { editNote(entry) }
+    setOnClickListener {
+     if(concealed) Toast.makeText(this@DockService,"Önce göz simgesiyle göster",Toast.LENGTH_SHORT).show()
+     else editNote(entry)
+    }
    }
    row.addView(noteButton)
    list.addView(row,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(8) })
@@ -325,6 +448,7 @@ class DockService: Service() {
  private fun hidePanel() {
   panel?.let { wm.removeView(it) }
   panel=null
+  revealedClips.clear()
   panelList=null
   panelCounter=null
  }

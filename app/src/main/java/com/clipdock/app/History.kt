@@ -3,7 +3,7 @@ import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
 
-data class ClipEntry(val text:String, val pinned:Boolean=false, val note:String="")
+data class ClipEntry(val text:String, val pinned:Boolean=false, val note:String="", val hidden:Boolean=false)
 
 class History(private val context:Context) {
  private val prefs=context.getSharedPreferences("clipdock",Context.MODE_PRIVATE)
@@ -13,13 +13,13 @@ class History(private val context:Context) {
    val obj=array.optJSONObject(i)
    if(obj!=null) {
     val text=obj.optString("text")
-    if(text.isBlank()) null else ClipEntry(text,obj.optBoolean("pinned"),obj.optString("note"))
+    if(text.isBlank()) null else ClipEntry(text,obj.optBoolean("pinned"),obj.optString("note"),obj.optBoolean("hidden"))
    } else array.optString(i).takeIf { it.isNotBlank() }?.let { ClipEntry(it) }
   }.toMutableList()
  }
  private fun save(items:List<ClipEntry>) {
   val array=JSONArray()
-  items.forEach { array.put(JSONObject().put("text",it.text).put("pinned",it.pinned).put("note",it.note)) }
+  items.forEach { array.put(JSONObject().put("text",it.text).put("pinned",it.pinned).put("note",it.note).put("hidden",it.hidden)) }
   prefs.edit().putString("history",array.toString()).apply()
  }
  fun entries():List<ClipEntry> = read().sortedWith(compareByDescending<ClipEntry> { it.pinned })
@@ -30,20 +30,35 @@ class History(private val context:Context) {
   val current=read()
   val previous=current.firstOrNull { it.text==text }
   current.removeAll { it.text==text }
-  current.add(0,ClipEntry(text,previous?.pinned?:false,previous?.note?:""))
+  current.add(0,ClipEntry(text,previous?.pinned?:false,previous?.note?:"",previous?.hidden?:false))
   val pinned=current.filter { it.pinned }
   val recent=current.filterNot { it.pinned }.take(10)
-  save(pinned+recent)
+  // Keep the existing pinned order, even when a pinned clip is copied again.
+  val originalPinned=read().filter { it.pinned }.map { it.text }
+  save(pinned.sortedBy { originalPinned.indexOf(it.text).let { n -> if(n<0) Int.MAX_VALUE else n } }+recent)
  }
  fun setPinned(text:String,pinned:Boolean) {
   save(read().map { if(it.text==text) it.copy(pinned=pinned) else it })
+ }
+ fun movePinned(text:String,direction:Int) {
+  val current=read()
+  val pinned=current.filter { it.pinned }.toMutableList()
+  val from=pinned.indexOfFirst { it.text==text }
+  val to=from+direction
+  if(from<0 || to !in pinned.indices) return
+  val item=pinned.removeAt(from)
+  pinned.add(to,item)
+  save(pinned+current.filterNot { it.pinned })
+ }
+ fun setHidden(text:String,hidden:Boolean) {
+  save(read().map { if(it.text==text) it.copy(hidden=hidden) else it })
  }
  fun setNote(text:String,note:String) {
   save(read().map { if(it.text==text) it.copy(note=note.take(1000)) else it })
  }
  fun remove(value:String) = save(read().filterNot { it.text==value })
  // Clear only unpinned clips, protecting pinned entries.
- fun clear() = save(read().filter { it.pinned })
+ fun clear() = save(read().filter { it.pinned || it.hidden })
  fun color()=prefs.getInt("color",0xFF8358F5.toInt())
  fun setColor(c:Int)=prefs.edit().putInt("color",c).apply()
  fun tabHeight()=prefs.getInt("tab_height",86)

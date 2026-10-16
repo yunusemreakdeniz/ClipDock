@@ -22,3 +22,23 @@ Klavye değişmeden eksiksiz otomatik geçmiş için standart Android API'si yok
 ## v1.9.1 — Sabitlenenlerde üç nokta menüsü
 - Sabitlenmiş kayıtların doğrudan silme düğmesi yerine dikey üç nokta (⋮) menüsü vardır.
 - Silme işlemi menüdeki **Sil** seçeneğiyle yapılır. Sabitlenmemiş kayıtlarda doğrudan silme düğmesi korunur.
+
+## v1.9.2 — Aşağı kaydırarak silme
+- Sabitlenmemiş bir kopya üzerinde 110dp'den uzun aşağı kaydırma hareketi kaydı siler.
+- Sabitlenmiş kayıtlar aşağı kaydırmayla silinmez; yalnızca ⋮ menüsünden silinir.
+- Yatay panel kapatma hareketi korunur.
+- Not: Listeyi aşağı doğru kaydırmak için yapılan uzun hareketler de silme olarak yorumlanabilir.
+
+## v2.0 — Akıllı içerik ve sıralama
+- URL: bağlantıyı tarayıcıda açma (↗); telefon: arama ekranı (☎); IBAN: boşluksuz kopyalama (₺).
+- Sabitlenmiş kayıtlarda ⋮ menüsünden Yukarı taşı / Aşağı taşı. Sabit sırası yeniden kopyalamada korunur.
+- Sağa uzun kaydırma (100dp) yalnızca sabitlenmemiş kaydı siler. Dikey kaydırma artık silmez.
+- Paneli kapatma: X veya karartılmış dış alana dokunma. Panel içindeki sola kaydırma kaldırıldı.
+- Android 10+ arka plan pano okuma kısıtlamaları devam eder.
+
+## v2.1 — Gizli kayıtlar
+- Normal kayıttaki göz simgesiyle gizli kayda dönüştür.
+- Gizli kayıtta metin ve açıklama maskelenir; göz simgesiyle göster/gizle.
+- Gizli kaydı kapatıp açınca yeniden maskeli görünür.
+- Gizli kayıtlar kaydırarak veya Temizle ile silinmez; ⋮ menüsünden yönetilir.
+- Bu özellik yalnızca ekranda gizleme sağlar. Yerel kayıtlar şifrelenmez, biyometrik/PIN doğrulama yoktur.
