@@ -98,7 +98,7 @@ class DockService: Service() {
   // Do not read the clipboard just because the user opens the tab.
   // Only actual clipboard change callbacks may create history entries.
   val screenWidth=resources.displayMetrics.widthPixels
-  val width=(screenWidth*0.96f).toInt()
+  val width=(screenWidth*0.82f).toInt()
   val outer=LinearLayout(this).apply {
    orientation=LinearLayout.VERTICAL; setPadding(dp(14),dp(14),dp(14),dp(12))
    background=bg(0xFF151C2A.toInt(),floatArrayOf(0f,0f,dp(24).toFloat(),dp(24).toFloat(),dp(24).toFloat(),dp(24).toFloat(),0f,0f))
@@ -161,7 +161,7 @@ class DockService: Service() {
   slider("Yükseklik (dp)",20,160,history.tabHeight(),history::setTabHeight)
   slider("Görünürlük (%)",20,100,history.tabOpacity(),history::setTabOpacity)
   outer.addView(settings)
-  val sub=TextView(this).apply { text="SON KOPYALANANLAR  •  ${history.all().size}/10"; textSize=12f; setTextColor(0xFF9BAAC3.toInt()); setPadding(0,dp(4),0,dp(12)) }
+  val sub=TextView(this).apply { text="KAYITLAR  •  ${history.all().size} (sabitlenenler korunur)"; textSize=12f; setTextColor(0xFF9BAAC3.toInt()); setPadding(0,dp(4),0,dp(12)) }
   outer.addView(sub)
   val scroll=ScrollView(this)
   val list=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
@@ -171,8 +171,40 @@ class DockService: Service() {
   scroll.addView(list); outer.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
   val footer=itemText("Temizle",14f).apply { gravity=Gravity.END; setTextColor(0xFFFF879B.toInt()); setOnClickListener { history.clear(); refreshList() } }
   outer.addView(footer)
-  val p=params(width,(resources.displayMetrics.heightPixels*0.88f).toInt()).apply { y=(resources.displayMetrics.heightPixels*0.055f).toInt() }
-  wm.addView(outer,p); panel=outer
+  // A left swipe closes the drawer, including when the gesture starts on a list item.
+  // Ordinary taps and vertical scrolling continue to work.
+  val backdrop=object:FrameLayout(this) {
+   private var downX=0f
+   private var downY=0f
+   private var swipeDismissed=false
+   override fun dispatchTouchEvent(event:MotionEvent):Boolean {
+    when(event.actionMasked) {
+     MotionEvent.ACTION_DOWN -> {
+      downX=event.x; downY=event.y; swipeDismissed=false
+     }
+     MotionEvent.ACTION_UP -> {
+      val dx=event.x-downX
+      val dy=event.y-downY
+      if(dx < -dp(75) && kotlin.math.abs(dx)>kotlin.math.abs(dy)*1.3f) {
+       swipeDismissed=true
+       hidePanel()
+       return true
+      }
+     }
+    }
+    return super.dispatchTouchEvent(event)
+   }
+  }.apply {
+   setBackgroundColor(0x55000000)
+   setOnClickListener { hidePanel() }
+  }
+  outer.isClickable=true
+  outer.setOnClickListener { }
+  backdrop.addView(outer,FrameLayout.LayoutParams(width,FrameLayout.LayoutParams.MATCH_PARENT,Gravity.START))
+  val p=params(WindowManager.LayoutParams.MATCH_PARENT,WindowManager.LayoutParams.MATCH_PARENT).apply {
+   x=0; y=0
+  }
+  wm.addView(backdrop,p); panel=backdrop
  }
  private fun itemText(value:String,size:Float)=TextView(this).apply { text=value; textSize=size; setTextColor(Color.WHITE); setPadding(dp(8),dp(10),dp(8),dp(10)) }
  private fun copy(value:String) {
@@ -186,37 +218,107 @@ class DockService: Service() {
    handler.postDelayed({ ignoreOwnCopy=false },400)
   }
  }
+ private fun editNote(entry:ClipEntry) {
+  val editor=EditText(this).apply {
+   setText(entry.note)
+   hint="Bu kopya için açıklama yaz..."
+   setSingleLine(false)
+   minLines=3
+   maxLines=6
+   setPadding(dp(18),dp(12),dp(18),dp(12))
+  }
+  val dialog=AlertDialog.Builder(this)
+   .setTitle("Açıklama")
+   .setView(editor)
+   .setNegativeButton("Vazgeç",null)
+   .setPositiveButton("Kaydet") { _,_ ->
+    history.setNote(entry.text,editor.text.toString().trim())
+    refreshList()
+   }.create()
+  dialog.window?.setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
+  dialog.show()
+  dialog.window?.setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
+ }
  private fun refreshList() {
   val list=panelList ?: return
   list.removeAllViews()
-  val entries=history.all()
-  panelCounter?.text="SON KOPYALANANLAR  •  ${entries.size}/10"
-  if(entries.isEmpty()) list.addView(itemText("Henüz kayıt yok. Android izin verdiğinde kopyalanan metinler burada görünür.",14f))
-  entries.forEach { value ->
+  val entries=history.entries()
+  val pinnedCount=entries.count { it.pinned }
+  panelCounter?.text="KAYITLAR • ${entries.size}  |  SABİT ${pinnedCount}"
+  if(entries.isEmpty()) list.addView(itemText("Henüz kayıt yok.",14f))
+  entries.forEach { entry ->
+   val value=entry.text
    val row=LinearLayout(this).apply {
-    orientation=LinearLayout.HORIZONTAL
-    gravity=Gravity.CENTER_VERTICAL
-    setPadding(dp(12),dp(8),dp(8),dp(8))
+    orientation=LinearLayout.VERTICAL
+    setPadding(dp(10),dp(8),dp(8),dp(8))
     background=bg(0xFF242E40.toInt(),FloatArray(8){dp(12).toFloat()})
    }
+   val top=LinearLayout(this).apply {
+    orientation=LinearLayout.HORIZONTAL
+    gravity=Gravity.CENTER_VERTICAL
+   }
    val preview=TextView(this).apply {
-    text=value; textSize=14f; setTextColor(Color.WHITE)
-    maxLines=2; ellipsize=android.text.TextUtils.TruncateAt.END
+    text=value
+    textSize=14f
+    setTextColor(Color.WHITE)
+    maxLines=2
+    ellipsize=android.text.TextUtils.TruncateAt.END
     setOnClickListener { copy(value) }
    }
-   row.addView(preview,LinearLayout.LayoutParams(0,dp(52),1f))
+   top.addView(preview,LinearLayout.LayoutParams(0,dp(52),1f))
+   val pinButton=TextView(this).apply {
+    text=if(entry.pinned) "★" else "☆"
+    textSize=22f
+    gravity=Gravity.CENTER
+    setTextColor(if(entry.pinned) 0xFFFFC66D.toInt() else 0xFFB9C2D5.toInt())
+    contentDescription=if(entry.pinned) "Sabitlemeyi kaldır" else "Sabitle"
+    setOnClickListener { history.setPinned(value,!entry.pinned); refreshList() }
+   }
+   top.addView(pinButton,LinearLayout.LayoutParams(dp(32),dp(42)))
    val copyButton=TextView(this).apply {
-    text="⧉"; textSize=17f; gravity=Gravity.CENTER
+    text="⧉"; textSize=18f; gravity=Gravity.CENTER
     setTextColor(0xFFA68CFF.toInt())
     setOnClickListener { copy(value) }
    }
-   row.addView(copyButton,LinearLayout.LayoutParams(dp(30),dp(42)))
-   val deleteButton=TextView(this).apply {
-    text="×"; textSize=25f; gravity=Gravity.CENTER
-    setTextColor(0xFFFF879B.toInt())
-    setOnClickListener { history.remove(value); refreshList() }
+   top.addView(copyButton,LinearLayout.LayoutParams(dp(30),dp(42)))
+   if(entry.pinned) {
+    // Pinned clips hide destructive actions in an overflow menu.
+    val moreButton=TextView(this).apply {
+     text="⋮"; textSize=24f; gravity=Gravity.CENTER
+     setTextColor(0xFFB9C2D5.toInt())
+     contentDescription="Diğer seçenekler"
+     setOnClickListener { anchor ->
+      PopupMenu(this@DockService,anchor).apply {
+       menu.add("Sil").setOnMenuItemClickListener {
+        history.remove(value)
+        refreshList()
+        true
+       }
+       show()
+      }
+     }
+    }
+    top.addView(moreButton,LinearLayout.LayoutParams(dp(28),dp(42)))
+   } else {
+    val deleteButton=TextView(this).apply {
+     text="×"; textSize=24f; gravity=Gravity.CENTER
+     setTextColor(0xFFFF879B.toInt())
+     contentDescription="Sil"
+     setOnClickListener { history.remove(value); refreshList() }
+    }
+    top.addView(deleteButton,LinearLayout.LayoutParams(dp(28),dp(42)))
    }
-   row.addView(deleteButton,LinearLayout.LayoutParams(dp(28),dp(42)))
+   row.addView(top)
+   val noteButton=TextView(this).apply {
+    text=if(entry.note.isBlank()) "✎  Açıklama ekle" else "✎  ${entry.note}"
+    textSize=12f
+    maxLines=2
+    ellipsize=android.text.TextUtils.TruncateAt.END
+    setTextColor(0xFFBCA8FF.toInt())
+    setPadding(dp(4),dp(3),dp(4),dp(4))
+    setOnClickListener { editNote(entry) }
+   }
+   row.addView(noteButton)
    list.addView(row,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(8) })
   }
  }
