@@ -42,3 +42,27 @@ Klavye değişmeden eksiksiz otomatik geçmiş için standart Android API'si yok
 - Gizli kaydı kapatıp açınca yeniden maskeli görünür.
 - Gizli kayıtlar kaydırarak veya Temizle ile silinmez; ⋮ menüsünden yönetilir.
 - Bu özellik yalnızca ekranda gizleme sağlar. Yerel kayıtlar şifrelenmez, biyometrik/PIN doğrulama yoktur.
+
+## v2.2 — Swipe çentik kontrolü
+- Çentiği sağa 48dp kaydır: pano yakalama ekranını/paneli aç. Tek dokunuş açmaz.
+- Çentiğe uzun bas ve dikey sürükle: konumunu değiştir.
+- Açılırken kısa titreşim; uzun basma algılandığında dokunsal geri bildirim.
+- Panel başlığında sola 60dp kaydırarak paneli kapat; X ve dış alana dokunma korunur.
+- Liste öğelerindeki sağa kaydırarak silme hareketi bağımsızdır.
+- Not: Sistem titreşim/dokunsal geri bildirim ayarları kapalıysa titreşim olmayabilir.
+
+
+## v2.3 — Yedekleme / Geri yükleme
+- Ana ekrandaki **Yedek oluştur (JSON)** ile kayıtları, sabitleme sırasını, notları, gizlilik işaretlerini ve çentik ayarlarını bir dosyaya kaydet.
+- **Yedeği geri yükle** ile bu dosyayı seçerek yeni kurulumda kayıtları geri al. Geri yükleme mevcut verilerin yerine geçer.
+- Android uygulaması kaldırılırsa uygulama verileri silinir; önceden dışa aktarılmış yedek gereklidir.
+- Gizli kayıtlar yedek dosyasında **şifrelenmemiş** olarak bulunur. Dosyayı güvenli bir yerde sakla.
+- Aynı paket adı ve aynı imzayla APK'yı kaldırmadan güncellemek normalde mevcut verileri korur.
+
+## v2.4 — Şifreleme
+- Yerel kopya geçmişi AES-256-GCM ve Android Keystore anahtarıyla şifrelenir. Mevcut düz metin geçmişi ilk erişimde şifreli biçime taşınır.
+- Parolalı yedekler AES-256-GCM + PBKDF2-HMAC-SHA256 (310.000 iterasyon, rastgele salt ve nonce) kullanır; .cdb dosyası yeni kurulumda parolayla geri yüklenebilir.
+- Ayarlardan isteğe bağlı biyometrik koruma etkinleştirilirse göz simgesi gizli kaydı açmadan önce biyometrik doğrulama ister (Android 9+).
+- ÖNEMLİ: Eski v2.3 düz metin JSON yedekleri bu sürümde içe aktarılmaz. Güncelleme öncesi mevcut verilerinizi yedekleyin.
+- Uygulama kaldırıldığında Keystore anahtarı ve yerel veriler silinir; yeniden yüklemeden önce .cdb yedeği dışarı kaydedilmelidir.
+- Bu koruma Android panosundaki sistem kopyalarını, ekran görüntülerini veya başka uygulamaların erişebildiği verileri şifrelemez.

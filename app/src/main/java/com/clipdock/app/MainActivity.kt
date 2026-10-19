@@ -9,6 +9,64 @@ import android.view.*
 import android.widget.*
 
 class MainActivity: Activity() {
+ private val backupCreateCode=701
+ private val backupRestoreCode=702
+ private var backupPassword:CharArray?=null
+ private fun askPassword(title:String,onReady:(CharArray)->Unit) {
+  val input=EditText(this).apply {
+   hint="En az 10 karakter"
+   inputType=android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+  }
+  val wrap=LinearLayout(this).apply { setPadding(32,8,32,0); addView(input) }
+  AlertDialog.Builder(this).setTitle(title).setView(wrap)
+   .setNegativeButton("Vazgeç",null)
+   .setPositiveButton("Devam") { _,_ ->
+    val pass=input.text.toString().toCharArray()
+    if(pass.size<10) Toast.makeText(this,"Parola en az 10 karakter olmalı",Toast.LENGTH_LONG).show()
+    else onReady(pass)
+   }.show()
+ }
+
+ override fun onActivityResult(requestCode:Int,resultCode:Int,data:Intent?) {
+  super.onActivityResult(requestCode,resultCode,data)
+  if(resultCode!=RESULT_OK) {
+   backupPassword?.fill('\\u0000'); backupPassword=null
+   return
+  }
+  val uri=data?.data ?: return
+  val history=History(this)
+  try {
+   when(requestCode) {
+    backupCreateCode -> {
+     val pass=backupPassword ?: error("Parola eksik")
+     try {
+      val encrypted=Crypto.encryptBackup(history.exportBackup(),pass)
+      contentResolver.openOutputStream(uri,"wt")?.bufferedWriter(Charsets.UTF_8)?.use { it.write(encrypted) }
+       ?: error("Dosya açılamadı")
+     } finally { pass.fill('\\u0000'); backupPassword=null }
+     Toast.makeText(this,"Yedek dosyası kaydedildi",Toast.LENGTH_LONG).show()
+    }
+    backupRestoreCode -> {
+     val backup=contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use { reader ->
+      val content=reader.readText()
+      require(content.length<=8_000_000) { "Dosya çok büyük" }
+      content
+     } ?: error("Dosya açılamadı")
+     val pass=backupPassword ?: error("Parola eksik")
+     val decrypted=try { Crypto.decryptBackup(backup,pass) }
+      finally { pass.fill('\\u0000'); backupPassword=null }
+     val count=history.importBackup(decrypted)
+     sendBroadcast(Intent("com.clipdock.app.COLOR").setPackage(packageName))
+     Toast.makeText(this,"$count kayıt geri yüklendi",Toast.LENGTH_LONG).show()
+     show()
+    }
+   }
+  } catch(e:Exception) {
+   backupPassword?.fill('\\u0000'); backupPassword=null
+   Toast.makeText(this,"Yedek işlemi başarısız: ${e.message}",Toast.LENGTH_LONG).show()
+  }
+ }
+
  override fun onCreate(savedInstanceState: Bundle?) {
   super.onCreate(savedInstanceState)
   window.statusBarColor=Color.rgb(13,17,29)
@@ -73,6 +131,60 @@ class MainActivity: Activity() {
   root.addView(Button(this).apply {
    text="Erişilebilirlik ayarlarını aç"
    setOnClickListener { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+  })
+  root.addView(label("Gizli kayıt koruması",19f))
+  val bioPrefs=getSharedPreferences("clipdock_security",MODE_PRIVATE)
+  root.addView(CheckBox(this).apply {
+   text="Göz simgesiyle açarken biyometrik doğrulama iste"
+   setTextColor(Color.WHITE)
+   isChecked=bioPrefs.getBoolean("biometric",false)
+   isEnabled=Build.VERSION.SDK_INT>=28
+   setOnCheckedChangeListener { _,checked ->
+    if(checked && Build.VERSION.SDK_INT>=29) {
+     val manager=getSystemService(android.hardware.biometrics.BiometricManager::class.java)
+     if(manager.canAuthenticate()!=android.hardware.biometrics.BiometricManager.BIOMETRIC_SUCCESS) {
+      isChecked=false
+      Toast.makeText(this@MainActivity,"Önce telefon ayarlarından biyometri tanımla",Toast.LENGTH_LONG).show()
+      return@setOnCheckedChangeListener
+     }
+    }
+    bioPrefs.edit().putBoolean("biometric",checked).apply()
+   }
+  })
+  root.addView(label("Yedekleme ve geri yükleme",19f))
+  root.addView(label("Yedek AES-256-GCM ile şifrelenir. Parolanı unutursan geri yükleyemezsin. Yedekleme uygulama kaldırılmadan önce yapılmalıdır.",13f))
+  root.addView(Button(this).apply {
+   text="Şifreli yedek oluştur"
+   setOnClickListener {
+    askPassword("Yedek parolası belirle") { pass ->
+     backupPassword=pass
+     val intent=Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+      addCategory(Intent.CATEGORY_OPENABLE)
+      type="application/octet-stream"
+      putExtra(Intent.EXTRA_TITLE,"ClipDock-yedek.cdb")
+     }
+     startActivityForResult(intent,backupCreateCode)
+    }
+   }
+  })
+  root.addView(Button(this).apply {
+   text="Yedeği geri yükle"
+   setOnClickListener {
+    AlertDialog.Builder(this@MainActivity)
+     .setTitle("Yedeği geri yükle")
+     .setMessage("Mevcut kayıtlar ve çentik ayarları yedekteki verilerle değiştirilecek. Devam edilsin mi?")
+     .setNegativeButton("Vazgeç",null)
+     .setPositiveButton("Devam") { _,_ ->
+      askPassword("Yedek parolasını gir") { pass ->
+       backupPassword=pass
+       val intent=Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+        addCategory(Intent.CATEGORY_OPENABLE)
+        type="*/*"
+       }
+       startActivityForResult(intent,backupRestoreCode)
+      }
+     }.show()
+   }
   })
   val clear=Button(this).apply { text="Geçmişi temizle"; setOnClickListener { h.clear(); Toast.makeText(this@MainActivity,"Geçmiş temizlendi",Toast.LENGTH_SHORT).show() } }
   root.addView(clear)

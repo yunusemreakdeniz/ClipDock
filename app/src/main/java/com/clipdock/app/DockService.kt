@@ -59,21 +59,63 @@ class DockService: Service() {
    alpha=history.tabOpacity()/100f
   }
   val p=params(dp(history.tabWidth()),dp(history.tabHeight()))
-  var startY=0f; var originalY=0; var moved=false
+  val touchSlop=ViewConfiguration.get(this).scaledTouchSlop
+  val longPressMs=ViewConfiguration.getLongPressTimeout().toLong()
+  var downX=0f; var downY=0f
+  var originalY=0
+  var dragging=false
+  var opened=false
+  var pendingLongPress:Runnable?=null
+  fun cancelLongPress() { pendingLongPress?.let(handler::removeCallbacks); pendingLongPress=null }
+  fun openFromGesture() {
+   if(opened) return
+   opened=true
+   cancelLongPress()
+   view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+   val intent=Intent(this@DockService,ClipboardCaptureActivity::class.java)
+    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION)
+   try { startActivity(intent) } catch (_:Exception) { showPanel(false) }
+  }
   view.setOnTouchListener { _,event ->
-   when(event.action) {
-    MotionEvent.ACTION_DOWN -> { startY=event.rawY; originalY=p.y; moved=false; true }
-    MotionEvent.ACTION_MOVE -> {
-     if(kotlin.math.abs(event.rawY-startY)>dp(8)) moved=true
-     if(moved) { p.y=(originalY+(event.rawY-startY)).toInt().coerceIn(0,resources.displayMetrics.heightPixels-dp(history.tabHeight()+14)); wm.updateViewLayout(view,p) }
+   when(event.actionMasked) {
+    MotionEvent.ACTION_DOWN -> {
+     downX=event.rawX; downY=event.rawY
+     originalY=p.y; dragging=false; opened=false
+     cancelLongPress()
+     val action=Runnable {
+      if(!opened) {
+       dragging=true
+       view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+      }
+     }
+     pendingLongPress=action
+     handler.postDelayed(action,longPressMs)
      true
     }
-    MotionEvent.ACTION_UP -> { if(!moved) {
-      val intent=Intent(this@DockService,ClipboardCaptureActivity::class.java)
-        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION)
-      try { startActivity(intent) } catch (_:Exception) { showPanel(false) }
-     }; true }
-    else -> false
+    MotionEvent.ACTION_MOVE -> {
+     val dx=event.rawX-downX
+     val dy=event.rawY-downY
+     if(dragging) {
+      p.y=(originalY+dy).toInt().coerceIn(0,resources.displayMetrics.heightPixels-dp(history.tabHeight()+14))
+      wm.updateViewLayout(view,p)
+     } else if(dx>dp(48) && dx>kotlin.math.abs(dy)*1.25f) {
+      openFromGesture()
+     } else if(kotlin.math.abs(dx)>touchSlop || kotlin.math.abs(dy)>touchSlop) {
+      cancelLongPress()
+     }
+     true
+    }
+    MotionEvent.ACTION_UP -> {
+     if(!dragging && !opened) {
+      val dx=event.rawX-downX
+      val dy=event.rawY-downY
+      if(dx>dp(48) && dx>kotlin.math.abs(dy)*1.25f) openFromGesture()
+     }
+     cancelLongPress()
+     true // Taps never open the drawer.
+    }
+    MotionEvent.ACTION_CANCEL -> { cancelLongPress(); true }
+    else -> true
    }
   }
   wm.addView(view,p); tab=view; tabParams=p
@@ -112,6 +154,21 @@ class DockService: Service() {
   header.addView(title,LinearLayout.LayoutParams(0,dp(54),1f))
   val close=TextView(this).apply { text="✕"; textSize=23f; gravity=Gravity.CENTER; setTextColor(0xFFB9C2D5.toInt()); setOnClickListener { hidePanel() } }
   header.addView(close,LinearLayout.LayoutParams(dp(44),dp(44)))
+  // Swipe left on the header to dismiss; list gestures remain independent.
+  var headerDownX=0f
+  var headerDownY=0f
+  header.setOnTouchListener { _,event ->
+   when(event.actionMasked) {
+    MotionEvent.ACTION_DOWN -> { headerDownX=event.rawX; headerDownY=event.rawY; true }
+    MotionEvent.ACTION_UP -> {
+     val dx=event.rawX-headerDownX
+     val dy=event.rawY-headerDownY
+     if(dx < -dp(60) && kotlin.math.abs(dx)>kotlin.math.abs(dy)*1.3f) hidePanel()
+     true
+    }
+    else -> true
+   }
+  }
   outer.addView(header)
   val settingsToggle=TextView(this).apply {
    text="⚙  Çentik ayarları  ▾"
@@ -354,8 +411,28 @@ class DockService: Service() {
      setTextColor(0xFF77DCC1.toInt())
      contentDescription=if(concealed) "Gizli kaydı göster" else "Gizli kaydı gizle"
      setOnClickListener {
-      if(concealed) revealedClips.add(value) else revealedClips.remove(value)
-      refreshList()
+      if(concealed) {
+       val requireBio=getSharedPreferences("clipdock_security",MODE_PRIVATE).getBoolean("biometric",false)
+       if(requireBio && Build.VERSION.SDK_INT>=28) {
+        UnlockActivity.onUnlock={
+         revealedClips.add(value)
+         refreshList()
+        }
+        try {
+         startActivity(Intent(this@DockService,UnlockActivity::class.java)
+          .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch(e:Exception) {
+         UnlockActivity.onUnlock=null
+         Toast.makeText(this@DockService,"Doğrulama açılamadı",Toast.LENGTH_SHORT).show()
+        }
+       } else {
+        revealedClips.add(value)
+        refreshList()
+       }
+      } else {
+       revealedClips.remove(value)
+       refreshList()
+      }
      }
     }
     top.addView(eye,LinearLayout.LayoutParams(dp(30),dp(42)))
