@@ -106,3 +106,9 @@ Klavye değişmeden eksiksiz otomatik geçmiş için standart Android API'si yok
 - Guarded overlay attach/remove and service cleanup paths.
 - Supports tap to open, swipe right to open, and long-press then drag vertically.
 - APK compilation and device testing are NOT verified.
+
+## v2.9.1 Gradle plugin fix
+- Android Gradle Plugin 8.7.3 and Kotlin Android Plugin 2.0.21 are explicitly versioned in app/build.gradle.kts.
+- Root build.gradle.kts has no conflicting plugin declaration.
+- Upload ALL files at repository root, including settings.gradle.kts and app/build.gradle.kts.
+- This corrects the reported plugin-resolution configuration, but compilation was not run in this environment.

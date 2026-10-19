@@ -43,7 +43,10 @@ class DockService: Service() {
   clipboard.addPrimaryClipChangedListener(listener)
   registerReceiver(colorReceiver,IntentFilter("com.clipdock.app.COLOR"),Context.RECEIVER_NOT_EXPORTED)
   registerReceiver(openReceiver,IntentFilter("com.clipdock.app.OPEN_PANEL"),Context.RECEIVER_NOT_EXPORTED)
-  showTab()
+  try { showTab() } catch(e:Exception) {
+   android.util.Log.e("ClipDock","Notch olusturulamadi",e)
+   Toast.makeText(this,"ClipDock çentiği başlatılamadı: ${e.message}",Toast.LENGTH_LONG).show()
+  }
  }
  private fun bg(color:Int,radii:FloatArray):GradientDrawable =
   GradientDrawable().apply { setColor(color); cornerRadii=radii }
@@ -70,68 +73,52 @@ class DockService: Service() {
    y=getSharedPreferences("clipdock_ui",MODE_PRIVATE).getInt("notch_y",y).coerceIn(dp(8),maxY)
    x=0
   }
-  // Android 10+ can exclude a narrow interactive overlay from edge navigation.
-  // The system may still reject exclusion on some devices.
-  if(Build.VERSION.SDK_INT>=29) {
-   view.addOnLayoutChangeListener { v,_,_,_,_,_,_,_,_ ->
-    v.systemGestureExclusionRects=listOf(Rect(0,0,v.width,v.height))
-   }
-  }
+  // Avoid gesture-exclusion callbacks on an application overlay: OEM-specific
+  // WindowManager implementations can reject them.
   // The overlay owns only its narrow notch. Avoid requiring a gesture to travel
   // beyond the overlay's bounds: Android may hand that motion to system navigation.
   val longPressMs=ViewConfiguration.getLongPressTimeout().toLong()
-  val openThreshold=dp(14).toFloat()
-  val moveTolerance=dp(22).toFloat()
-  var downX=0f; var downY=0f
-  var originalY=0
+  var downX=0f
+  var downY=0f
+  var lastY=0f
   var dragging=false
-  var opened=false
   var moved=false
-  var pendingLongPress:Runnable?=null
-  var lastDragY=0f
-  var lastTapAt=0L
-  var lastTapX=0f
-  var lastTapY=0f
-  val doubleTapTimeout=ViewConfiguration.getDoubleTapTimeout().toLong()
-  val doubleTapDistance=dp(48).toFloat()
-  fun cancelLongPress() {
-   pendingLongPress?.let(handler::removeCallbacks)
-   pendingLongPress=null
+  var opened=false
+  var longPress:Runnable?=null
+  fun cancelHold() {
+   longPress?.let { handler.removeCallbacks(it) }
+   longPress=null
   }
-  fun openFromGesture() {
+  fun openDrawer() {
    if(opened) return
    opened=true
-   cancelLongPress()
-   view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-   // Show the panel immediately. Opening an Activity from the overlay can
-   // interrupt the gesture or be blocked by Android background-start rules.
+   cancelHold()
    try {
     showPanel(false)
+    view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
    } catch(e:Exception) {
-    android.util.Log.e("ClipDock","Panel açma hatası",e)
-    Toast.makeText(this@DockService,"Panel açılamadı: ${e.javaClass.simpleName}: ${e.message}",Toast.LENGTH_LONG).show()
-    // Open settings/activity so the user is never left with a dead notch.
-    try { startActivity(Intent(this@DockService,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
-    catch(_:Exception) {}
+    android.util.Log.e("ClipDock","Panel acilamadi",e)
+    Toast.makeText(this@DockService,"Panel acilamadi: ${e.message}",Toast.LENGTH_LONG).show()
    }
   }
   view.setOnTouchListener { _,event ->
    when(event.actionMasked) {
     MotionEvent.ACTION_DOWN -> {
-     downX=event.rawX; downY=event.rawY
-     originalY=p.y
-     lastDragY=event.rawY
-     dragging=false; opened=false; moved=false
-     cancelLongPress()
-     val action=Runnable {
+     downX=event.rawX
+     downY=event.rawY
+     lastY=event.rawY
+     dragging=false
+     moved=false
+     opened=false
+     cancelHold()
+     val hold=Runnable {
       if(!opened && !moved) {
        dragging=true
-       lastTapAt=0L
        view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
       }
      }
-     pendingLongPress=action
-     handler.postDelayed(action,longPressMs)
+     longPress=hold
+     handler.postDelayed(hold,longPressMs)
      true
     }
     MotionEvent.ACTION_MOVE -> {
@@ -139,41 +126,34 @@ class DockService: Service() {
      val dy=event.rawY-downY
      if(dragging) {
       val maxY=(resources.displayMetrics.heightPixels-p.height-dp(24)).coerceAtLeast(dp(8))
-      p.y=(p.y+event.rawY-lastDragY).toInt().coerceIn(dp(8),maxY)
-      lastDragY=event.rawY
-      wm.updateViewLayout(view,p)
-     } else {
-      if(dx>openThreshold && dx>kotlin.math.abs(dy)*1.1f) {
-       openFromGesture()
-      } else if(kotlin.math.abs(dx)>moveTolerance || kotlin.math.abs(dy)>moveTolerance) {
-       moved=true
-       cancelLongPress()
+      p.y=(p.y+event.rawY-lastY).toInt().coerceIn(dp(8),maxY)
+      lastY=event.rawY
+      try { wm.updateViewLayout(view,p) } catch(e:Exception) {
+       android.util.Log.e("ClipDock","Notch move failed",e)
       }
+     } else if(dx>dp(14) && dx>kotlin.math.abs(dy)*1.1f) {
+      openDrawer()
+     } else if(kotlin.math.abs(dx)>dp(18) || kotlin.math.abs(dy)>dp(18)) {
+      moved=true
+      cancelHold()
      }
      true
     }
     MotionEvent.ACTION_UP -> {
-     if(!dragging && !opened) {
+     if(dragging) {
+      getSharedPreferences("clipdock_ui",MODE_PRIVATE).edit().putInt("notch_y",p.y).apply()
+     } else if(!opened) {
       val dx=event.rawX-downX
       val dy=event.rawY-downY
-      if(dx>openThreshold && dx>kotlin.math.abs(dy)*1.1f) {
-       openFromGesture()
-       lastTapAt=0L
-      } else if(!moved && kotlin.math.abs(dx)<dp(12) && kotlin.math.abs(dy)<dp(12)) {
-       // Reliable fallback on gesture-navigation phones: tap opens the drawer.
-       openFromGesture()
-      }
+      if(dx>dp(14) && dx>kotlin.math.abs(dy)*1.1f) openDrawer()
+      else if(!moved && kotlin.math.abs(dx)<dp(12) && kotlin.math.abs(dy)<dp(12)) openDrawer()
      }
-     } else if(dragging) {
-      lastTapAt=0L
-     }
-     if(dragging) getSharedPreferences("clipdock_ui",MODE_PRIVATE).edit().putInt("notch_y",p.y).apply()
-     cancelLongPress()
+     cancelHold()
      dragging=false
      true
     }
     MotionEvent.ACTION_CANCEL -> {
-     cancelLongPress()
+     cancelHold()
      dragging=false
      true
     }
@@ -193,7 +173,7 @@ class DockService: Service() {
   visible.alpha=history.tabOpacity()/100f
   wm.updateViewLayout(view,lp)
  }
- private fun hideTab() { tab?.let { wm.removeView(it) }; tab=null }
+ private fun hideTab() { tab?.let { try { wm.removeView(it) } catch(_:Exception) {} }; tab=null }
  private fun capture() {
   try {
    val item=clipboard.primaryClip?.takeIf { it.itemCount>0 }?.getItemAt(0) ?: return
@@ -288,7 +268,7 @@ class DockService: Service() {
   slider("Yükseklik (dp)",20,160,history.tabHeight(),history::setTabHeight)
   slider("Görünürlük (%)",20,100,history.tabOpacity(),history::setTabOpacity)
   outer.addView(settings)
-  val sub=TextView(this).apply { text="KAYITLAR  •  ${history.all().size} (sabitlenenler korunur)"; textSize=12f; setTextColor(0xFF9BAAC3.toInt()); setPadding(0,dp(4),0,dp(12)) }
+  val sub=TextView(this).apply { text="KAYITLAR  •  Yükleniyor"; textSize=12f; setTextColor(0xFF9BAAC3.toInt()); setPadding(0,dp(4),0,dp(12)) }
   outer.addView(sub)
   // Horizontal right swipe deletes unpinned entries; vertical gestures scroll normally.
   // A pinned entry is never deleted by a gesture.
@@ -362,7 +342,14 @@ class DockService: Service() {
   val p=params(WindowManager.LayoutParams.MATCH_PARENT,WindowManager.LayoutParams.MATCH_PARENT).apply {
    x=0; y=0
   }
-  wm.addView(backdrop,p); panel=backdrop
+  try {
+   wm.addView(backdrop,p)
+   panel=backdrop
+  } catch(e:Exception) {
+   panelList=null
+   panelCounter=null
+   throw e
+  }
  }
  private fun itemText(value:String,size:Float)=TextView(this).apply { text=value; textSize=size; setTextColor(Color.WHITE); setPadding(dp(8),dp(10),dp(8),dp(10)) }
  private fun copy(value:String) {
@@ -594,14 +581,16 @@ class DockService: Service() {
   }
  }
  private fun hidePanel() {
-  panel?.let { wm.removeView(it) }
+  panel?.let { try { wm.removeView(it) } catch(_:Exception) {} }
   panel=null
   revealedClips.clear()
   panelList=null
   panelCounter=null
  }
  override fun onDestroy() {
-  clipboard.removePrimaryClipChangedListener(listener); unregisterReceiver(colorReceiver); unregisterReceiver(openReceiver)
+  try { clipboard.removePrimaryClipChangedListener(listener) } catch(_:Exception) {}
+  try { unregisterReceiver(colorReceiver) } catch(_:Exception) {}
+  try { unregisterReceiver(openReceiver) } catch(_:Exception) {}
   hidePanel(); hideTab(); super.onDestroy()
  }
 }
