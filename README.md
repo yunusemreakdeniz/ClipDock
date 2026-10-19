@@ -90,3 +90,11 @@ Klavye değişmeden eksiksiz otomatik geçmiş için standart Android API'si yok
 - Çift dokunma alternatif açma hareketidir.
 - Daha önceki şifreli yedekleme ve gizli kayıtlar korunur.
 - Derleme ve fiziksel cihaz testi henüz doğrulanmadı.
+
+## v2.8 — Panel açılmıyor düzeltmesi
+- Tek dokunma paneli açar (hareketli gezinmede güvenilir yedek yöntem).
+- Sağa kaydırma hareketi ACTION_MOVE sırasında açılır; Android ACTION_CANCEL üretse de açılış tetiklenir.
+- Uzun basarak çentiği taşıma korunur.
+- Panel açılışındaki hatalar artık logcat'e yazılır ve ekranda hata gösterilir; ana uygulama ekranı yedek olarak açılır.
+- Şifreli geçmiş okunamazsa panelin tamamı kapanmak yerine kullanıcıya geri yükleme uyarısı gösterilir.
+- Gerçek cihaz APK derlemesi doğrulanmadı.

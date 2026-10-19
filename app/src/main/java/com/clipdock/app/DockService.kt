@@ -105,7 +105,15 @@ class DockService: Service() {
    view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
    // Show the panel immediately. Opening an Activity from the overlay can
    // interrupt the gesture or be blocked by Android background-start rules.
-   showPanel(false)
+   try {
+    showPanel(false)
+   } catch(e:Exception) {
+    android.util.Log.e("ClipDock","Panel açma hatası",e)
+    Toast.makeText(this@DockService,"Panel açılamadı: ${e.javaClass.simpleName}: ${e.message}",Toast.LENGTH_LONG).show()
+    // Open settings/activity so the user is never left with a dead notch.
+    try { startActivity(Intent(this@DockService,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+    catch(_:Exception) {}
+   }
   }
   view.setOnTouchListener { _,event ->
    when(event.actionMasked) {
@@ -135,7 +143,9 @@ class DockService: Service() {
       lastDragY=event.rawY
       wm.updateViewLayout(view,p)
      } else {
-      if(kotlin.math.abs(dx)>moveTolerance || kotlin.math.abs(dy)>moveTolerance) {
+      if(dx>openThreshold && dx>kotlin.math.abs(dy)*1.1f) {
+       openFromGesture()
+      } else if(kotlin.math.abs(dx)>moveTolerance || kotlin.math.abs(dy)>moveTolerance) {
        moved=true
        cancelLongPress()
       }
@@ -150,18 +160,10 @@ class DockService: Service() {
        openFromGesture()
        lastTapAt=0L
       } else if(!moved && kotlin.math.abs(dx)<dp(12) && kotlin.math.abs(dy)<dp(12)) {
-       val now=android.os.SystemClock.uptimeMillis()
-       if(now-lastTapAt<=doubleTapTimeout &&
-          kotlin.math.abs(event.rawX-lastTapX)<doubleTapDistance &&
-          kotlin.math.abs(event.rawY-lastTapY)<doubleTapDistance) {
-        lastTapAt=0L
-        openFromGesture()
-       } else {
-        lastTapAt=now
-        lastTapX=event.rawX
-        lastTapY=event.rawY
-       }
+       // Reliable fallback on gesture-navigation phones: tap opens the drawer.
+       openFromGesture()
       }
+     }
      } else if(dragging) {
       lastTapAt=0L
      }
@@ -201,7 +203,10 @@ class DockService: Service() {
   } catch (_:Exception) { /* OS may deny clipboard access in background */ }
  }
  private fun showPanel(readClipboard:Boolean=true) {
-  if(panel!=null) return
+  if(panel!=null) {
+   if(panel?.isAttachedToWindow==true) return
+   panel=null
+  }
   // Do not read the clipboard just because the user opens the tab.
   // Only actual clipboard change callbacks may create history entries.
   val screenWidth=resources.displayMetrics.widthPixels
@@ -417,7 +422,11 @@ class DockService: Service() {
  private fun refreshList() {
   val list=panelList ?: return
   list.removeAllViews()
-  val entries=history.entries()
+  val entries=try { history.entries() } catch(e:Exception) {
+   android.util.Log.e("ClipDock","Şifreli geçmiş okunamadı",e)
+   list.addView(itemText("Kayıtlar okunamadı. Uygulamadan şifreli yedeği geri yükleyin.",14f))
+   return
+  }
   val pinnedCount=entries.count { it.pinned }
   panelCounter?.text="KAYITLAR • ${entries.size}  |  SABİT ${pinnedCount}"
   if(entries.isEmpty()) list.addView(itemText("Henüz kayıt yok.",14f))
