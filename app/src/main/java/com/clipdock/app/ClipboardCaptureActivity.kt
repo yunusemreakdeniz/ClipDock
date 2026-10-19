@@ -22,7 +22,7 @@ class ClipboardCaptureActivity : Activity() {
                 if (clip != null && clip.itemCount > 0) {
                     clip.getItemAt(0).coerceToText(this)?.toString()?.let { History(this).add(it) }
                 }
-            } catch (_: Exception) { }
+            } catch (e: Exception) { android.util.Log.e("ClipDock","Clipboard capture failed",e) }
             sendBroadcast(Intent("com.clipdock.app.OPEN_PANEL").setPackage(packageName))
             finish()
             overridePendingTransition(0, 0)

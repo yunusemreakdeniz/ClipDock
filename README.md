@@ -112,3 +112,12 @@ Klavye değişmeden eksiksiz otomatik geçmiş için standart Android API'si yok
 - Root build.gradle.kts has no conflicting plugin declaration.
 - Upload ALL files at repository root, including settings.gradle.kts and app/build.gradle.kts.
 - This corrects the reported plugin-resolution configuration, but compilation was not run in this environment.
+
+## v3.0 recovery
+- Keeps original unreadable AES-GCM ciphertext intact; uses a separate recovery history for new clips.
+- Foreground clipboard-capture Activity on notch open (Android 10+ restrictions still apply).
+- Root Gradle plugins use apply false; app module applies Android and Kotlin plugins.
+- Note: If the Android Keystore key is irrecoverably invalidated, old encrypted records cannot be decrypted without a prior export.
+- Note: recovery history is not encrypted when the original key is inaccessible; avoid storing secrets until a fresh encrypted backup/import is possible.
+- Android 15 cannot guarantee silent background capture from other apps.
+- Build and device behavior are unverified.

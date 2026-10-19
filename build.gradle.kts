@@ -1,2 +1,4 @@
-// Plugin versions are declared in app/build.gradle.kts so a missing or stale
-// root plugins block cannot produce 'plugin dependency must include a version'.
+plugins {
+    id("com.android.application") version "8.7.3" apply false
+    id("org.jetbrains.kotlin.android") version "2.0.21" apply false
+}

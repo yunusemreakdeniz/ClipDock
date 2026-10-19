@@ -8,13 +8,30 @@ data class ClipEntry(val text:String, val pinned:Boolean=false, val note:String=
 class History(private val context:Context) {
  private val prefs=context.getSharedPreferences("clipdock",Context.MODE_PRIVATE)
  private fun loadHistory():String {
+  // Never delete unreadable encrypted history: it may become recoverable later.
   val encrypted=prefs.getString("history_encrypted",null)
-  if(encrypted!=null) return Crypto.decryptLocal(encrypted)
+  if(encrypted!=null) {
+   try { return Crypto.decryptLocal(encrypted) }
+   catch(e:Exception) {
+    android.util.Log.e("ClipDock","Original history locked; preserving it",e)
+    // Separate new history prevents a damaged/invalidated Keystore key from
+    // stopping all future captures. The original encrypted blob is untouched.
+    return prefs.getString("history_recovery", "[]") ?: "[]"
+   }
+  }
   val legacy=prefs.getString("history","[]") ?: "[]"
-  // Migrate legacy plaintext immediately; do not delete it unless encrypted commit succeeds.
-  check(prefs.edit().putString("history_encrypted",Crypto.encryptLocal(legacy))
-   .remove("history").commit()) { "Eski kayıtlar şifrelenemedi" }
+  // Never discard plaintext until encrypted storage has been verified.
+  try {
+   val blob=Crypto.encryptLocal(legacy)
+   check(Crypto.decryptLocal(blob)==legacy)
+   if(prefs.edit().putString("history_encrypted",blob).commit())
+    prefs.edit().remove("history").apply()
+  } catch(e:Exception) { android.util.Log.e("ClipDock","Migration deferred",e) }
   return legacy
+ }
+ fun hasLockedHistory():Boolean {
+  val blob=prefs.getString("history_encrypted",null) ?: return false
+  return try { Crypto.decryptLocal(blob); false } catch(_:Exception) { true }
  }
  private fun read():MutableList<ClipEntry> {
   val array=JSONArray(loadHistory())
@@ -29,8 +46,19 @@ class History(private val context:Context) {
  private fun save(items:List<ClipEntry>) {
   val array=JSONArray()
   items.forEach { array.put(JSONObject().put("text",it.text).put("pinned",it.pinned).put("note",it.note).put("hidden",it.hidden)) }
-  check(prefs.edit().putString("history_encrypted",Crypto.encryptLocal(array.toString()))
-   .remove("history").commit()) { "Şifreli kayıt kaydedilemedi" }
+  val serialized=array.toString()
+  if(hasLockedHistory()) {
+   check(prefs.edit().putString("history_recovery",serialized).commit()) { "Yeni kayıtlar kaydedilemedi" }
+   return
+  }
+  try {
+   val blob=Crypto.encryptLocal(serialized)
+   check(prefs.edit().putString("history_encrypted",blob).remove("history").commit())
+  } catch(e:Exception) {
+   // Do not overwrite original ciphertext when Android Keystore is unavailable.
+   android.util.Log.e("ClipDock","Encrypted write failed; temporary recovery store",e)
+   check(prefs.edit().putString("history_recovery",serialized).commit())
+  }
  }
  fun exportBackup():String {
   val data=JSONObject()
@@ -63,9 +91,9 @@ class History(private val context:Context) {
   val newOpacity=data.optInt("tab_opacity",tabOpacity()).coerceIn(20,100)
   val serialized=JSONArray()
   items.distinctBy { it.text }.forEach { serialized.put(JSONObject().put("text",it.text).put("pinned",it.pinned).put("note",it.note).put("hidden",it.hidden)) }
-  check(prefs.edit().putString("history_encrypted",Crypto.encryptLocal(serialized.toString())).remove("history")
-   .putInt("color",newColor).putInt("tab_height",newHeight)
-   .putInt("tab_width",newWidth).putInt("tab_opacity",newOpacity).commit()) { "Yedek kaydedilemedi" }
+  save(items.distinctBy { it.text })
+  prefs.edit().putInt("color",newColor).putInt("tab_height",newHeight)
+   .putInt("tab_width",newWidth).putInt("tab_opacity",newOpacity).apply()
   return serialized.length()
  }
  fun entries():List<ClipEntry> = read().sortedWith(compareByDescending<ClipEntry> { it.pinned })

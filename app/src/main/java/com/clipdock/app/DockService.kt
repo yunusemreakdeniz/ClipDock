@@ -94,7 +94,15 @@ class DockService: Service() {
    opened=true
    cancelHold()
    try {
-    showPanel(false)
+    // A foreground Activity is allowed to read the current clipboard on Android 10+.
+    // Opening the overlay alone cannot reliably read it on Android 15.
+    try {
+     startActivity(Intent(this@DockService,ClipboardCaptureActivity::class.java)
+      .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION))
+    } catch(e:Exception) {
+     android.util.Log.w("ClipDock","Foreground capture unavailable",e)
+     showPanel(false)
+    }
     view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
    } catch(e:Exception) {
     android.util.Log.e("ClipDock","Panel acilamadi",e)
@@ -409,6 +417,9 @@ class DockService: Service() {
  private fun refreshList() {
   val list=panelList ?: return
   list.removeAllViews()
+  if(history.hasLockedHistory()) {
+   list.addView(itemText("Eski şifreli kayıtlar açılamıyor; korunuyor. Yeni kayıtlar ayrı saklanıyor. Varsa yedeğinizi geri yükleyin.",13f))
+  }
   val entries=try { history.entries() } catch(e:Exception) {
    android.util.Log.e("ClipDock","Şifreli geçmiş okunamadı",e)
    list.addView(itemText("Kayıtlar okunamadı. Uygulamadan şifreli yedeği geri yükleyin.",14f))
