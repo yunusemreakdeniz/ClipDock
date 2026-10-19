@@ -26,7 +26,11 @@ class DockService: Service() {
  private var tabParams:WindowManager.LayoutParams?=null
  private val listener=ClipboardManager.OnPrimaryClipChangedListener { handler.post { if(!ignoreOwnCopy) capture() } }
  private val openReceiver=object:BroadcastReceiver() {
-  override fun onReceive(c:Context,i:Intent) { showPanel(false) }
+  override fun onReceive(c:Context,i:Intent) {
+   try {
+    if(panel==null) showPanel(false) else refreshList()
+   } catch(e:Exception) { android.util.Log.e("ClipDock","Panel refresh failed",e) }
+  }
  }
  private val colorReceiver=object:BroadcastReceiver() { override fun onReceive(c:Context,i:Intent) { updateTab() } }
  override fun onBind(i:Intent?):IBinder?=null
@@ -96,12 +100,13 @@ class DockService: Service() {
    try {
     // A foreground Activity is allowed to read the current clipboard on Android 10+.
     // Opening the overlay alone cannot reliably read it on Android 15.
+    // Always show the panel, even when Android denies background Activity launches.
+    showPanel(false)
     try {
      startActivity(Intent(this@DockService,ClipboardCaptureActivity::class.java)
       .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION))
     } catch(e:Exception) {
      android.util.Log.w("ClipDock","Foreground capture unavailable",e)
-     showPanel(false)
     }
     view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
    } catch(e:Exception) {
@@ -188,7 +193,7 @@ class DockService: Service() {
    val value=item.coerceToText(this)?.toString() ?: return
    history.add(value)
    if(panel!=null) refreshList()
-  } catch (_:Exception) { /* OS may deny clipboard access in background */ }
+  } catch(e:Exception) { android.util.Log.w("ClipDock","Background clipboard access unavailable",e) }
  }
  private fun showPanel(readClipboard:Boolean=true) {
   if(panel!=null) {

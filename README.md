@@ -125,3 +125,12 @@ Klavye değişmeden eksiksiz otomatik geçmiş için standart Android API'si yok
 ## v3.0.1
 - Removed duplicate app/plugins block; plugin versions are managed by root build.gradle.kts.
 - This is a Gradle configuration fix only; APK/device functionality has not been validated.
+
+
+## v3.0.2 — Pano yakalama düzeltmesi
+- Çentik açıldığında panel her durumda görünür; ön plan pano okuma etkinliği engellense bile panel kapanmaz.
+- Pano okuma etkinliği, uygulama ön plandayken 300 ms sonra mevcut kopyayı eklemeyi dener.
+- Kopya eklendiğinde açık panelin listesi yenilenir.
+- Pano okuma hataları Logcat'e yazılır; eski kayıtlar silinmez.
+- Android 10+ diğer uygulamalardan arka planda tüm kopyaları yakalamayı kısıtlar; otomatik sürekli geçmiş garantisi yoktur.
+- APK derlemesi ve cihaz testi doğrulanmadı.
