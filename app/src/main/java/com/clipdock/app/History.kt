@@ -34,7 +34,10 @@ class History(private val context:Context) {
   return try { Crypto.decryptLocal(blob); false } catch(_:Exception) { true }
  }
  private fun read():MutableList<ClipEntry> {
-  val array=JSONArray(loadHistory())
+  val array=try { JSONArray(loadHistory()) } catch(e:Exception) {
+   android.util.Log.e("ClipDock","History parse failed",e)
+   try { JSONArray(prefs.getString("history_recovery","[]") ?: "[]") } catch(_:Exception) { JSONArray() }
+  }
   return (0 until array.length()).mapNotNull { i ->
    val obj=array.optJSONObject(i)
    if(obj!=null) {

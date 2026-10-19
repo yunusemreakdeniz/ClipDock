@@ -35,6 +35,6 @@ class ClipboardCaptureActivity : Activity() {
     finish()
     overridePendingTransition(0,0)
    }
-  },300)
+  },180)
  }
 }

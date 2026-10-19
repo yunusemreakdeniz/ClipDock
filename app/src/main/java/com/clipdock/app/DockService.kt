@@ -102,12 +102,6 @@ class DockService: Service() {
     // Opening the overlay alone cannot reliably read it on Android 15.
     // Always show the panel, even when Android denies background Activity launches.
     showPanel(false)
-    try {
-     startActivity(Intent(this@DockService,ClipboardCaptureActivity::class.java)
-      .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION))
-    } catch(e:Exception) {
-     android.util.Log.w("ClipDock","Foreground capture unavailable",e)
-    }
     view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
    } catch(e:Exception) {
     android.util.Log.e("ClipDock","Panel acilamadi",e)
@@ -213,6 +207,23 @@ class DockService: Service() {
   val title=TextView(this).apply { text="▣  ClipDock"; textSize=22f; setTextColor(Color.WHITE); setTypeface(null,1) }
   header.addView(title,LinearLayout.LayoutParams(0,dp(54),1f))
   val close=TextView(this).apply { text="✕"; textSize=23f; gravity=Gravity.CENTER; setTextColor(0xFFB9C2D5.toInt()); setOnClickListener { hidePanel() } }
+  val captureNow=TextView(this).apply {
+   text="⎘"
+   contentDescription="Panodaki metni kaydet"
+   textSize=25f
+   gravity=Gravity.CENTER
+   setTextColor(Color.WHITE)
+   setOnClickListener {
+    try {
+     startActivity(Intent(this@DockService,ClipboardCaptureActivity::class.java)
+      .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION))
+    } catch(e:Exception) {
+     android.util.Log.e("ClipDock","Capture Activity could not start",e)
+     Toast.makeText(this@DockService,"Panoya erişmek için ClipDock uygulamasını açın",Toast.LENGTH_LONG).show()
+    }
+   }
+  }
+  header.addView(captureNow,LinearLayout.LayoutParams(dp(48),dp(44)))
   header.addView(close,LinearLayout.LayoutParams(dp(44),dp(44)))
   // Swipe left on the header to dismiss; list gestures remain independent.
   var headerDownX=0f

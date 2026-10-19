@@ -134,3 +134,10 @@ Klavye değişmeden eksiksiz otomatik geçmiş için standart Android API'si yok
 - Pano okuma hataları Logcat'e yazılır; eski kayıtlar silinmez.
 - Android 10+ diğer uygulamalardan arka planda tüm kopyaları yakalamayı kısıtlar; otomatik sürekli geçmiş garantisi yoktur.
 - APK derlemesi ve cihaz testi doğrulanmadı.
+
+## v3.0.3 clipboard update
+- Added explicit foreground clipboard capture button (⎘) to panel header. Tap after copying in another app.
+- Removed automatic Activity launch from notch opening to prevent foreground focus interruptions and crashes.
+- Accessibility service listens for additional text selection signals, but Android may still restrict clipboard reads.
+- Added fallback for malformed stored history without clearing original ciphertext.
+- Android 15 cannot guarantee passive capture of all other-app copies. No APK build or on-device verification performed.

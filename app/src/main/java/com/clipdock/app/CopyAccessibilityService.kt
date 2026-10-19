@@ -17,12 +17,14 @@ class CopyAccessibilityService : AccessibilityService() {
   val type = event?.eventType ?: return
   if(type != AccessibilityEvent.TYPE_VIEW_CLICKED &&
      type != AccessibilityEvent.TYPE_ANNOUNCEMENT &&
-     type != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) return
+     type != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED &&
+     type != AccessibilityEvent.TYPE_VIEW_TEXT_SELECTION_CHANGED) return
   val now = android.os.SystemClock.elapsedRealtime()
   if(now-lastAttempt < 1200) return
   val words = event.text?.joinToString(" ")?.lowercase(java.util.Locale.ROOT) ?: ""
   val description = event.contentDescription?.toString()?.lowercase(java.util.Locale.ROOT) ?: ""
-  if(listOf("kopyala","copied","copy","panoya kopyalandı").none { words.contains(it) || description.contains(it) }) return
+  val copyHint=listOf("kopyala","copied","copy","panoya kopyalandı").any { words.contains(it) || description.contains(it) }
+  if(!copyHint && type!=AccessibilityEvent.TYPE_VIEW_TEXT_SELECTION_CHANGED) return
   lastAttempt = now
   handler.postDelayed({
    try {
