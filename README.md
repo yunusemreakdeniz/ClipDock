@@ -98,3 +98,11 @@ Klavye değişmeden eksiksiz otomatik geçmiş için standart Android API'si yok
 - Panel açılışındaki hatalar artık logcat'e yazılır ve ekranda hata gösterilir; ana uygulama ekranı yedek olarak açılır.
 - Şifreli geçmiş okunamazsa panelin tamamı kapanmak yerine kullanıcıya geri yükleme uyarısı gösterilir.
 - Gerçek cihaz APK derlemesi doğrulanmadı.
+
+## v2.9 stability fixes
+- Replaced malformed touch-handler braces with a single simple state machine.
+- Removed overlay gesture-exclusion callbacks that may fail on OEM Android builds.
+- Prevented encrypted history reads before panel construction.
+- Guarded overlay attach/remove and service cleanup paths.
+- Supports tap to open, swipe right to open, and long-press then drag vertically.
+- APK compilation and device testing are NOT verified.
