@@ -30,7 +30,7 @@ class MainActivity: Activity() {
  override fun onActivityResult(requestCode:Int,resultCode:Int,data:Intent?) {
   super.onActivityResult(requestCode,resultCode,data)
   if(resultCode!=RESULT_OK) {
-   backupPassword?.fill('\\u0000'); backupPassword=null
+   backupPassword?.fill('\u0000'); backupPassword=null
    return
   }
   val uri=data?.data ?: return
@@ -43,7 +43,7 @@ class MainActivity: Activity() {
       val encrypted=Crypto.encryptBackup(history.exportBackup(),pass)
       contentResolver.openOutputStream(uri,"wt")?.bufferedWriter(Charsets.UTF_8)?.use { it.write(encrypted) }
        ?: error("Dosya açılamadı")
-     } finally { pass.fill('\\u0000'); backupPassword=null }
+     } finally { pass.fill('\u0000'); backupPassword=null }
      Toast.makeText(this,"Yedek dosyası kaydedildi",Toast.LENGTH_LONG).show()
     }
     backupRestoreCode -> {
@@ -54,7 +54,7 @@ class MainActivity: Activity() {
      } ?: error("Dosya açılamadı")
      val pass=backupPassword ?: error("Parola eksik")
      val decrypted=try { Crypto.decryptBackup(backup,pass) }
-      finally { pass.fill('\\u0000'); backupPassword=null }
+      finally { pass.fill('\u0000'); backupPassword=null }
      val count=history.importBackup(decrypted)
      sendBroadcast(Intent("com.clipdock.app.COLOR").setPackage(packageName))
      Toast.makeText(this,"$count kayıt geri yüklendi",Toast.LENGTH_LONG).show()
@@ -62,7 +62,7 @@ class MainActivity: Activity() {
     }
    }
   } catch(e:Exception) {
-   backupPassword?.fill('\\u0000'); backupPassword=null
+   backupPassword?.fill('\u0000'); backupPassword=null
    Toast.makeText(this,"Yedek işlemi başarısız: ${e.message}",Toast.LENGTH_LONG).show()
   }
  }
