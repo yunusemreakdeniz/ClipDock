@@ -121,3 +121,7 @@ Klavye değişmeden eksiksiz otomatik geçmiş için standart Android API'si yok
 - Note: recovery history is not encrypted when the original key is inaccessible; avoid storing secrets until a fresh encrypted backup/import is possible.
 - Android 15 cannot guarantee silent background capture from other apps.
 - Build and device behavior are unverified.
+
+## v3.0.1
+- Removed duplicate app/plugins block; plugin versions are managed by root build.gradle.kts.
+- This is a Gradle configuration fix only; APK/device functionality has not been validated.
