@@ -82,3 +82,11 @@ Klavye değişmeden eksiksiz otomatik geçmiş için standart Android API'si yok
 - Sağa kısa kaydırma paneli açar, uzun basıp titreşimden sonra dikey taşıma yapılır.
 - Çentiğin dikey konumu yeniden başlatmalarda saklanır.
 - Gerçek cihazda ve APK derlemesinde test edilmemiştir.
+
+## v2.7 — Çentik sol kenarda ve daha geniş dokunma alanıyla
+- Görünür çentik tam sol kenarda; 56dp şeffaf dokunma alanı kaydırma/çift dokunmayı kolaylaştırır.
+- 14dp sağa kaydırma parmak kaldırılınca paneli açar.
+- Uzun basıp titreşimden sonra yukarı/aşağı sürükleyerek taşıyın.
+- Çift dokunma alternatif açma hareketidir.
+- Daha önceki şifreli yedekleme ve gizli kayıtlar korunur.
+- Derleme ve fiziksel cihaz testi henüz doğrulanmadı.

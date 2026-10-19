@@ -54,15 +54,21 @@ class DockService: Service() {
    PixelFormat.TRANSLUCENT).apply { gravity=Gravity.START or Gravity.TOP; x=0; y=resources.displayMetrics.heightPixels/3 }
  private fun showTab() {
   if(tab!=null) return
-  val view=TextView(this).apply {
+  // A transparent 56dp touch target surrounds a narrower visible notch.
+  // The overlay remains flush with the physical left edge.
+  val visible=TextView(this).apply {
    text=""; gravity=Gravity.CENTER
    background=bg(history.color(),floatArrayOf(0f,0f,dp(18).toFloat(),dp(18).toFloat(),dp(18).toFloat(),dp(18).toFloat(),0f,0f))
    alpha=history.tabOpacity()/100f
   }
-  val p=params(dp(history.tabWidth()),dp(history.tabHeight())).apply {
-   y=getSharedPreferences("clipdock_ui",MODE_PRIVATE).getInt("notch_y",y)
-   // Keep the tab slightly inside the left edge to avoid Android's Back gesture.
-   x=dp(12)
+  val view=FrameLayout(this).apply {
+   addView(visible,FrameLayout.LayoutParams(dp(history.tabWidth()),FrameLayout.LayoutParams.MATCH_PARENT,Gravity.START))
+   isClickable=true
+  }
+  val p=params(dp(maxOf(history.tabWidth(),56)),dp(history.tabHeight())).apply {
+   val maxY=(resources.displayMetrics.heightPixels-height-dp(24)).coerceAtLeast(dp(8))
+   y=getSharedPreferences("clipdock_ui",MODE_PRIVATE).getInt("notch_y",y).coerceIn(dp(8),maxY)
+   x=0
   }
   // Android 10+ can exclude a narrow interactive overlay from edge navigation.
   // The system may still reject exclusion on some devices.
@@ -74,14 +80,15 @@ class DockService: Service() {
   // The overlay owns only its narrow notch. Avoid requiring a gesture to travel
   // beyond the overlay's bounds: Android may hand that motion to system navigation.
   val longPressMs=ViewConfiguration.getLongPressTimeout().toLong()
-  val openThreshold=dp(18).toFloat()
-  val moveTolerance=dp(16).toFloat()
+  val openThreshold=dp(14).toFloat()
+  val moveTolerance=dp(22).toFloat()
   var downX=0f; var downY=0f
   var originalY=0
   var dragging=false
   var opened=false
   var moved=false
   var pendingLongPress:Runnable?=null
+  var lastDragY=0f
   var lastTapAt=0L
   var lastTapX=0f
   var lastTapY=0f
@@ -105,11 +112,13 @@ class DockService: Service() {
     MotionEvent.ACTION_DOWN -> {
      downX=event.rawX; downY=event.rawY
      originalY=p.y
+     lastDragY=event.rawY
      dragging=false; opened=false; moved=false
      cancelLongPress()
      val action=Runnable {
       if(!opened && !moved) {
        dragging=true
+       lastTapAt=0L
        view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
       }
      }
@@ -121,13 +130,12 @@ class DockService: Service() {
      val dx=event.rawX-downX
      val dy=event.rawY-downY
      if(dragging) {
-      val maxY=(resources.displayMetrics.heightPixels-p.height-dp(24)).coerceAtLeast(0)
-      p.y=(originalY+dy).toInt().coerceIn(dp(8),maxY.coerceAtLeast(dp(8)))
+      val maxY=(resources.displayMetrics.heightPixels-p.height-dp(24)).coerceAtLeast(dp(8))
+      p.y=(p.y+event.rawY-lastDragY).toInt().coerceIn(dp(8),maxY)
+      lastDragY=event.rawY
       wm.updateViewLayout(view,p)
      } else {
-      if(dx>openThreshold && dx>kotlin.math.abs(dy)*1.1f) {
-       openFromGesture()
-      } else if(kotlin.math.abs(dx)>moveTolerance || kotlin.math.abs(dy)>moveTolerance) {
+      if(kotlin.math.abs(dx)>moveTolerance || kotlin.math.abs(dy)>moveTolerance) {
        moved=true
        cancelLongPress()
       }
@@ -175,10 +183,12 @@ class DockService: Service() {
  private fun updateTab() {
   val view=tab ?: return
   val lp=tabParams ?: return
-  lp.width=dp(history.tabWidth())
+  lp.width=dp(maxOf(history.tabWidth(),56))
   lp.height=dp(history.tabHeight())
-  view.background=bg(history.color(),floatArrayOf(0f,0f,dp(18).toFloat(),dp(18).toFloat(),dp(18).toFloat(),dp(18).toFloat(),0f,0f))
-  view.alpha=history.tabOpacity()/100f
+  val visible=(view as FrameLayout).getChildAt(0)
+  visible.layoutParams=FrameLayout.LayoutParams(dp(history.tabWidth()),FrameLayout.LayoutParams.MATCH_PARENT,Gravity.START)
+  visible.background=bg(history.color(),floatArrayOf(0f,0f,dp(18).toFloat(),dp(18).toFloat(),dp(18).toFloat(),dp(18).toFloat(),0f,0f))
+  visible.alpha=history.tabOpacity()/100f
   wm.updateViewLayout(view,lp)
  }
  private fun hideTab() { tab?.let { wm.removeView(it) }; tab=null }
