@@ -3,6 +3,7 @@ package com.clipdock.app
 import android.app.*
 import android.content.*
 import android.graphics.Color
+import android.graphics.Rect
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
 import android.os.*
@@ -58,32 +59,56 @@ class DockService: Service() {
    background=bg(history.color(),floatArrayOf(0f,0f,dp(18).toFloat(),dp(18).toFloat(),dp(18).toFloat(),dp(18).toFloat(),0f,0f))
    alpha=history.tabOpacity()/100f
   }
-  val p=params(dp(history.tabWidth()),dp(history.tabHeight()))
-  val touchSlop=ViewConfiguration.get(this).scaledTouchSlop
+  val p=params(dp(history.tabWidth()),dp(history.tabHeight())).apply {
+   y=getSharedPreferences("clipdock_ui",MODE_PRIVATE).getInt("notch_y",y)
+   // Keep the tab slightly inside the left edge to avoid Android's Back gesture.
+   x=dp(12)
+  }
+  // Android 10+ can exclude a narrow interactive overlay from edge navigation.
+  // The system may still reject exclusion on some devices.
+  if(Build.VERSION.SDK_INT>=29) {
+   view.addOnLayoutChangeListener { v,_,_,_,_,_,_,_,_ ->
+    v.systemGestureExclusionRects=listOf(Rect(0,0,v.width,v.height))
+   }
+  }
+  // The overlay owns only its narrow notch. Avoid requiring a gesture to travel
+  // beyond the overlay's bounds: Android may hand that motion to system navigation.
   val longPressMs=ViewConfiguration.getLongPressTimeout().toLong()
+  val openThreshold=dp(18).toFloat()
+  val moveTolerance=dp(16).toFloat()
   var downX=0f; var downY=0f
   var originalY=0
   var dragging=false
   var opened=false
+  var moved=false
   var pendingLongPress:Runnable?=null
-  fun cancelLongPress() { pendingLongPress?.let(handler::removeCallbacks); pendingLongPress=null }
+  var lastTapAt=0L
+  var lastTapX=0f
+  var lastTapY=0f
+  val doubleTapTimeout=ViewConfiguration.getDoubleTapTimeout().toLong()
+  val doubleTapDistance=dp(48).toFloat()
+  fun cancelLongPress() {
+   pendingLongPress?.let(handler::removeCallbacks)
+   pendingLongPress=null
+  }
   fun openFromGesture() {
    if(opened) return
    opened=true
    cancelLongPress()
    view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-   val intent=Intent(this@DockService,ClipboardCaptureActivity::class.java)
-    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION)
-   try { startActivity(intent) } catch (_:Exception) { showPanel(false) }
+   // Show the panel immediately. Opening an Activity from the overlay can
+   // interrupt the gesture or be blocked by Android background-start rules.
+   showPanel(false)
   }
   view.setOnTouchListener { _,event ->
    when(event.actionMasked) {
     MotionEvent.ACTION_DOWN -> {
      downX=event.rawX; downY=event.rawY
-     originalY=p.y; dragging=false; opened=false
+     originalY=p.y
+     dragging=false; opened=false; moved=false
      cancelLongPress()
      val action=Runnable {
-      if(!opened) {
+      if(!opened && !moved) {
        dragging=true
        view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
       }
@@ -96,12 +121,16 @@ class DockService: Service() {
      val dx=event.rawX-downX
      val dy=event.rawY-downY
      if(dragging) {
-      p.y=(originalY+dy).toInt().coerceIn(0,resources.displayMetrics.heightPixels-dp(history.tabHeight()+14))
+      val maxY=(resources.displayMetrics.heightPixels-p.height-dp(24)).coerceAtLeast(0)
+      p.y=(originalY+dy).toInt().coerceIn(dp(8),maxY.coerceAtLeast(dp(8)))
       wm.updateViewLayout(view,p)
-     } else if(dx>dp(48) && dx>kotlin.math.abs(dy)*1.25f) {
-      openFromGesture()
-     } else if(kotlin.math.abs(dx)>touchSlop || kotlin.math.abs(dy)>touchSlop) {
-      cancelLongPress()
+     } else {
+      if(dx>openThreshold && dx>kotlin.math.abs(dy)*1.1f) {
+       openFromGesture()
+      } else if(kotlin.math.abs(dx)>moveTolerance || kotlin.math.abs(dy)>moveTolerance) {
+       moved=true
+       cancelLongPress()
+      }
      }
      true
     }
@@ -109,12 +138,35 @@ class DockService: Service() {
      if(!dragging && !opened) {
       val dx=event.rawX-downX
       val dy=event.rawY-downY
-      if(dx>dp(48) && dx>kotlin.math.abs(dy)*1.25f) openFromGesture()
+      if(dx>openThreshold && dx>kotlin.math.abs(dy)*1.1f) {
+       openFromGesture()
+       lastTapAt=0L
+      } else if(!moved && kotlin.math.abs(dx)<dp(12) && kotlin.math.abs(dy)<dp(12)) {
+       val now=android.os.SystemClock.uptimeMillis()
+       if(now-lastTapAt<=doubleTapTimeout &&
+          kotlin.math.abs(event.rawX-lastTapX)<doubleTapDistance &&
+          kotlin.math.abs(event.rawY-lastTapY)<doubleTapDistance) {
+        lastTapAt=0L
+        openFromGesture()
+       } else {
+        lastTapAt=now
+        lastTapX=event.rawX
+        lastTapY=event.rawY
+       }
+      }
+     } else if(dragging) {
+      lastTapAt=0L
      }
+     if(dragging) getSharedPreferences("clipdock_ui",MODE_PRIVATE).edit().putInt("notch_y",p.y).apply()
      cancelLongPress()
-     true // Taps never open the drawer.
+     dragging=false
+     true
     }
-    MotionEvent.ACTION_CANCEL -> { cancelLongPress(); true }
+    MotionEvent.ACTION_CANCEL -> {
+     cancelLongPress()
+     dragging=false
+     true
+    }
     else -> true
    }
   }

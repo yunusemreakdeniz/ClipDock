@@ -66,3 +66,19 @@ Klavye değişmeden eksiksiz otomatik geçmiş için standart Android API'si yok
 - ÖNEMLİ: Eski v2.3 düz metin JSON yedekleri bu sürümde içe aktarılmaz. Güncelleme öncesi mevcut verilerinizi yedekleyin.
 - Uygulama kaldırıldığında Keystore anahtarı ve yerel veriler silinir; yeniden yüklemeden önce .cdb yedeği dışarı kaydedilmelidir.
 - Bu koruma Android panosundaki sistem kopyalarını, ekran görüntülerini veya başka uygulamaların erişebildiği verileri şifrelemez.
+
+## v2.5 — Çentik dokunma hareketi düzeltmesi
+- Paneli açmak için kısa sağa sürükleme (18dp): Android'in kenar geri hareketiyle daha az çakışır.
+- Panel artık kaydırma sonunda doğrudan açılır; araya geçici Activity sokulmaz.
+- Çentiği taşımak için hareket etmeden uzun basın, titreşimden sonra yukarı/aşağı sürükleyin.
+- Parmağı kaydırmadan tek dokunma paneli açmaz.
+- Çentik ekrandan dışarı taşınmaz, yukarı/aşağı güvenli sınırlarda tutulur.
+- Not: Android'in kenar hareketleri ve üretici overlay kısıtları cihazdan cihaza farklılık gösterebilir.
+
+## v2.6 — Android hareketli gezinme uyumluluğu
+- Çentik ekranın solundan 12dp içeride açılır.
+- Android 10+ için yalnızca çentik alanına systemGestureExclusionRects uygulanır (üretici/sistem sınırlamalarına tabi).
+- Çift dokunma alternatif açılış yöntemidir; tek dokunma açmaz.
+- Sağa kısa kaydırma paneli açar, uzun basıp titreşimden sonra dikey taşıma yapılır.
+- Çentiğin dikey konumu yeniden başlatmalarda saklanır.
+- Gerçek cihazda ve APK derlemesinde test edilmemiştir.
